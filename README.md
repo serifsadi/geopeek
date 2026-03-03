@@ -23,7 +23,15 @@
 
 ## Screenshots
 
-> _Coming soon_
+<p align="center">
+  <img src=".github/images/banner.png" alt="GeoPeek Screenshots" width="100%">
+</p>
+
+### Finder Integration
+
+<p align="center">
+  <img src=".github/images/finder_banner.png" alt="Finder Integration" width="100%">
+</p>
 
 ## Requirements
 
