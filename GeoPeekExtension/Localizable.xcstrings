@@ -1,0 +1,30 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Not Valid GeoJSON" : {
+      "comment" : "Heading on the error page shown when a file cannot be parsed as GeoJSON",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not Valid GeoJSON"
+          }
+        }
+      }
+    },
+    "This file doesn't contain recognisable GeoJSON data and cannot be previewed." : {
+      "comment" : "Body text on the error page",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This file doesn't contain recognisable GeoJSON data and cannot be previewed."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

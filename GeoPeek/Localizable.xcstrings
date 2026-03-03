@@ -1,0 +1,83 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Back" : {
+
+    },
+    "Close file" : {
+
+    },
+    "Drop a GeoJSON file here" : {
+      "comment" : "Instruction text inside the drag-and-drop zone",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drop a GeoJSON file here"
+          }
+        }
+      }
+    },
+    "Fit to data" : {
+      "comment" : "Tooltip / aria-label for the fit-to-bounds map button",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fit to data"
+          }
+        }
+      }
+    },
+    "GeoJSON Quick Look & Viewer" : {
+      "comment" : "Subtitle shown below the app name on the welcome screen",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GeoJSON Quick Look & Viewer"
+          }
+        }
+      }
+    },
+    "GeoPeek" : {
+      "comment" : "App name shown in the welcome screen",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GeoPeek"
+          }
+        }
+      }
+    },
+    "Open GeoJSON File…" : {
+      "comment" : "Label on the Open button and menu item",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open GeoJSON File…"
+          }
+        }
+      }
+    },
+    "You can also press **Space** on any `.geojson` file in Finder to preview it." : {
+
+    },
+    "You can also press %@ on any %@ file in Finder to preview it." : {
+      "comment" : "Hint below Open button. %1$@ = Space (key), %2$@ = .geojson (extension)",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You can also press %1$@ on any %2$@ file in Finder to preview it."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

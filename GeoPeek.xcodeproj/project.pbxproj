@@ -6,14 +6,105 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B61370892F5370DB00DCA15B /* Quartz.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B61370882F5370DB00DCA15B /* Quartz.framework */; };
+		B61370952F5370DB00DCA15B /* GeoPeekExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B61370862F5370DB00DCA15B /* GeoPeekExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		CC000001CC5399AA00DCA15B /* GeoPeekThumbnailExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CC000004CC5399AA00DCA15B /* GeoPeekThumbnailExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		CC000002CC5399AA00DCA15B /* QuickLookThumbnailing.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC000005CC5399AA00DCA15B /* QuickLookThumbnailing.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B61370932F5370DB00DCA15B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B613706C2F5370A500DCA15B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B61370852F5370DB00DCA15B;
+			remoteInfo = GeoPeekExtension;
+		};
+		CC000003CC5399AA00DCA15B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B613706C2F5370A500DCA15B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CC00000BCC5399AA00DCA15B;
+			remoteInfo = GeoPeekThumbnailExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B613709A2F5370DB00DCA15B /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B61370952F5370DB00DCA15B /* GeoPeekExtension.appex in Embed Foundation Extensions */,
+				CC000001CC5399AA00DCA15B /* GeoPeekThumbnailExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		B61370742F5370A500DCA15B /* GeoPeek.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GeoPeek.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B61370862F5370DB00DCA15B /* GeoPeekExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = GeoPeekExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B61370882F5370DB00DCA15B /* Quartz.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Quartz.framework; path = System/Library/Frameworks/Quartz.framework; sourceTree = SDKROOT; };
+		CC000004CC5399AA00DCA15B /* GeoPeekThumbnailExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = GeoPeekThumbnailExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		CC000005CC5399AA00DCA15B /* QuickLookThumbnailing.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuickLookThumbnailing.framework; path = System/Library/Frameworks/QuickLookThumbnailing.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B61370962F5370DB00DCA15B /* Exceptions for "GeoPeekExtension" folder in "GeoPeekExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B61370852F5370DB00DCA15B /* GeoPeekExtension */;
+		};
+		CC000007CC5399AA00DCA15B /* Exceptions for "GeoPeekThumbnailExtension" folder in "GeoPeekThumbnailExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = CC00000BCC5399AA00DCA15B /* GeoPeekThumbnailExtension */;
+		};
+		CC400001CC5399AA00DCA15B /* Exceptions for "GeoPeek" folder in "GeoPeek" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B61370732F5370A500DCA15B /* GeoPeek */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B61370762F5370A500DCA15B /* GeoPeek */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				CC400001CC5399AA00DCA15B /* Exceptions for "GeoPeek" folder in "GeoPeek" target */,
+			);
 			path = GeoPeek;
+			sourceTree = "<group>";
+		};
+		B613708A2F5370DB00DCA15B /* GeoPeekExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B61370962F5370DB00DCA15B /* Exceptions for "GeoPeekExtension" folder in "GeoPeekExtension" target */,
+			);
+			path = GeoPeekExtension;
+			sourceTree = "<group>";
+		};
+		CC000006CC5399AA00DCA15B /* GeoPeekThumbnailExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				CC000007CC5399AA00DCA15B /* Exceptions for "GeoPeekThumbnailExtension" folder in "GeoPeekThumbnailExtension" target */,
+			);
+			path = GeoPeekThumbnailExtension;
+			sourceTree = "<group>";
+		};
+		CC300001CC5399AA00DCA15B /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -26,6 +117,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B61370832F5370DB00DCA15B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B61370892F5370DB00DCA15B /* Quartz.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CC000008CC5399AA00DCA15B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC000002CC5399AA00DCA15B /* QuickLookThumbnailing.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -33,6 +140,10 @@
 			isa = PBXGroup;
 			children = (
 				B61370762F5370A500DCA15B /* GeoPeek */,
+				B613708A2F5370DB00DCA15B /* GeoPeekExtension */,
+				CC000006CC5399AA00DCA15B /* GeoPeekThumbnailExtension */,
+				CC300001CC5399AA00DCA15B /* Shared */,
+				B61370872F5370DB00DCA15B /* Frameworks */,
 				B61370752F5370A500DCA15B /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,8 +152,19 @@
 			isa = PBXGroup;
 			children = (
 				B61370742F5370A500DCA15B /* GeoPeek.app */,
+				B61370862F5370DB00DCA15B /* GeoPeekExtension.appex */,
+				CC000004CC5399AA00DCA15B /* GeoPeekThumbnailExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B61370872F5370DB00DCA15B /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				B61370882F5370DB00DCA15B /* Quartz.framework */,
+				CC000005CC5399AA00DCA15B /* QuickLookThumbnailing.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -55,13 +177,17 @@
 				B61370702F5370A500DCA15B /* Sources */,
 				B61370712F5370A500DCA15B /* Frameworks */,
 				B61370722F5370A500DCA15B /* Resources */,
+				B613709A2F5370DB00DCA15B /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				B61370942F5370DB00DCA15B /* PBXTargetDependency */,
+				CC00000CCC5399AA00DCA15B /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				B61370762F5370A500DCA15B /* GeoPeek */,
+				CC300001CC5399AA00DCA15B /* Shared */,
 			);
 			name = GeoPeek;
 			packageProductDependencies = (
@@ -69,6 +195,51 @@
 			productName = GeoPeek;
 			productReference = B61370742F5370A500DCA15B /* GeoPeek.app */;
 			productType = "com.apple.product-type.application";
+		};
+		B61370852F5370DB00DCA15B /* GeoPeekExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B61370972F5370DB00DCA15B /* Build configuration list for PBXNativeTarget "GeoPeekExtension" */;
+			buildPhases = (
+				B61370822F5370DB00DCA15B /* Sources */,
+				B61370832F5370DB00DCA15B /* Frameworks */,
+				B61370842F5370DB00DCA15B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B613708A2F5370DB00DCA15B /* GeoPeekExtension */,
+				CC300001CC5399AA00DCA15B /* Shared */,
+			);
+			name = GeoPeekExtension;
+			packageProductDependencies = (
+			);
+			productName = GeoPeekExtension;
+			productReference = B61370862F5370DB00DCA15B /* GeoPeekExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		CC00000BCC5399AA00DCA15B /* GeoPeekThumbnailExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CC00000FCC5399AA00DCA15B /* Build configuration list for PBXNativeTarget "GeoPeekThumbnailExtension" */;
+			buildPhases = (
+				CC00000ACC5399AA00DCA15B /* Sources */,
+				CC000008CC5399AA00DCA15B /* Frameworks */,
+				CC000009CC5399AA00DCA15B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				CC000006CC5399AA00DCA15B /* GeoPeekThumbnailExtension */,
+			);
+			name = GeoPeekThumbnailExtension;
+			packageProductDependencies = (
+			);
+			productName = GeoPeekThumbnailExtension;
+			productReference = CC000004CC5399AA00DCA15B /* GeoPeekThumbnailExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -81,6 +252,12 @@
 				LastUpgradeCheck = 2630;
 				TargetAttributes = {
 					B61370732F5370A500DCA15B = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					B61370852F5370DB00DCA15B = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					CC00000BCC5399AA00DCA15B = {
 						CreatedOnToolsVersion = 26.3;
 					};
 				};
@@ -100,12 +277,28 @@
 			projectRoot = "";
 			targets = (
 				B61370732F5370A500DCA15B /* GeoPeek */,
+				B61370852F5370DB00DCA15B /* GeoPeekExtension */,
+				CC00000BCC5399AA00DCA15B /* GeoPeekThumbnailExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		B61370722F5370A500DCA15B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B61370842F5370DB00DCA15B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CC000009CC5399AA00DCA15B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +315,34 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B61370822F5370DB00DCA15B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CC00000ACC5399AA00DCA15B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B61370942F5370DB00DCA15B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B61370852F5370DB00DCA15B /* GeoPeekExtension */;
+			targetProxy = B61370932F5370DB00DCA15B /* PBXContainerItemProxy */;
+		};
+		CC00000CCC5399AA00DCA15B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CC00000BCC5399AA00DCA15B /* GeoPeekThumbnailExtension */;
+			targetProxy = CC000003CC5399AA00DCA15B /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		B613707D2F5370A600DCA15B /* Debug */ = {
@@ -158,6 +378,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -221,6 +442,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -248,6 +470,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = GeoPeek/GeoPeek.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -255,6 +478,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GeoPeek/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -278,6 +502,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = GeoPeek/GeoPeek.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -285,6 +510,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GeoPeek/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -297,6 +523,152 @@
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		B61370982F5370DB00DCA15B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 7W797GT86L;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GeoPeekExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = GeoPeekExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				NEW_SETTING = "";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.serifsadi.GeoPeek.GeoPeekExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B61370992F5370DB00DCA15B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 7W797GT86L;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GeoPeekExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = GeoPeekExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				NEW_SETTING = "";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.serifsadi.GeoPeek.GeoPeekExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		CC00000DCC5399AA00DCA15B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 7W797GT86L;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = NO;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GeoPeekThumbnailExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = GeoPeekThumbnailExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.serifsadi.GeoPeek.GeoPeekThumbnailExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		CC00000ECC5399AA00DCA15B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 7W797GT86L;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = NO;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GeoPeekThumbnailExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = GeoPeekThumbnailExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.serifsadi.GeoPeek.GeoPeekThumbnailExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
@@ -320,6 +692,24 @@
 			buildConfigurations = (
 				B61370802F5370A600DCA15B /* Debug */,
 				B61370812F5370A600DCA15B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B61370972F5370DB00DCA15B /* Build configuration list for PBXNativeTarget "GeoPeekExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B61370982F5370DB00DCA15B /* Debug */,
+				B61370992F5370DB00DCA15B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CC00000FCC5399AA00DCA15B /* Build configuration list for PBXNativeTarget "GeoPeekThumbnailExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CC00000DCC5399AA00DCA15B /* Debug */,
+				CC00000ECC5399AA00DCA15B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
