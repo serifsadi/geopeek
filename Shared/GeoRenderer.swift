@@ -351,7 +351,7 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
           border-bottom: 0.5px solid var(--sep);
         }
         .attr-table tbody tr {
-          cursor: pointer; border-bottom: 0.5px solid var(--sep);
+          border-bottom: 0.5px solid var(--sep);
         }
         .attr-table tbody tr:hover { background: var(--panel-bg); }
         .attr-table tbody tr.selected {
@@ -362,12 +362,22 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
           padding: 6px 12px; color: var(--label);
           font-size: 12px; white-space: nowrap;
           max-width: 300px; overflow: hidden;
-          text-overflow: ellipsis; vertical-align: top;
+          text-overflow: ellipsis; vertical-align: middle;
         }
         .attr-table td:first-child {
-          color: var(--label3); font-size: 11px;
-          font-variant-numeric: tabular-nums;
+          padding: 6px 8px;
+          vertical-align: middle;
         }
+        .btn-show-map {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 24px; height: 24px;
+          border: none; border-radius: 6px; cursor: pointer;
+          background: var(--panel-bg);
+          border: 0.5px solid var(--panel-border);
+          color: var(--accent);
+          transition: background 0.15s;
+        }
+        .btn-show-map:hover { background: var(--sep); }
         .attr-type {
           display: inline-block; font-size: 10px; font-weight: 500;
           color: var(--accent);
@@ -585,7 +595,8 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
                 if (k !== '__idx' && !ks[k]) { ks[k] = true; allKeys.push(k); }
               });
             });
-            var h = '<table class="attr-table"><thead><tr><th>#</th><th>Type</th>';
+            var mapIcon = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4l4.5-2.5 5 2.5L15 1.5v11L10.5 15l-5-2.5L1 15z"/><path d="M5.5 1.5v11M10.5 4v11"/></svg>';
+            var h = '<table class="attr-table"><thead><tr><th></th><th>#</th><th>Type</th>';
             allKeys.forEach(function(k) { h += '<th>' + esc(k) + '</th>'; });
             h += '</tr></thead><tbody>';
             features.forEach(function(f, i) {
@@ -593,7 +604,8 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
               var p  = f.properties || {};
               h += '<tr id="row-' + i + '" data-idx="' + i + '"';
               if (i === selectedFeatureIndex) h += ' class="selected"';
-              h += '><td>' + (i + 1) + '</td>';
+              h += '><td><button class="btn-show-map" data-idx="' + i + '" title="Show on Map">' + mapIcon + '</button></td>';
+              h += '<td>' + (i + 1) + '</td>';
               h += '<td><span class="attr-type">' + esc(typeLabels[gt] || gt) + '</span></td>';
               allKeys.forEach(function(k) {
                 var v = p[k];
@@ -609,23 +621,28 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
             });
             h += '</tbody></table>';
             el.innerHTML = h;
-            el.querySelectorAll('tbody tr').forEach(function(tr) {
-              tr.addEventListener('click', function() {
+            el.querySelectorAll('.btn-show-map').forEach(function(btn) {
+              btn.addEventListener('click', function(e) {
+                e.stopPropagation();
                 var idx = parseInt(this.dataset.idx);
                 selectRow(idx);
                 var f = features[idx];
                 if (f) {
                   map.getSource('highlight').setData(f);
-                  var fb = featureBounds(f);
-                  if (fb) {
-                    var sw = fb.getSouthWest(), ne = fb.getNorthEast();
-                    if (sw.lng === ne.lng && sw.lat === ne.lat)
-                      map.flyTo({ center: [sw.lng, sw.lat], zoom: 14 });
-                    else
-                      map.fitBounds(fb, { padding: 80, maxZoom: 16 });
-                  }
+                  // Switch to map first, then fit bounds after resize
+                  toggleView('map');
+                  setTimeout(function() {
+                    map.resize();
+                    var fb = featureBounds(f);
+                    if (fb) {
+                      var sw = fb.getSouthWest(), ne = fb.getNorthEast();
+                      if (sw.lng === ne.lng && sw.lat === ne.lat)
+                        map.flyTo({ center: [sw.lng, sw.lat], zoom: 14 });
+                      else
+                        map.fitBounds(fb, { padding: 80, maxZoom: 16 });
+                    }
+                  }, 50);
                 }
-                toggleView('map');
               });
             });
             if (selectedFeatureIndex >= 0) {
@@ -726,7 +743,12 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
 
           // Parse GeoJSON injected by Swift as window.__GEO__ (base64)
           var geojson;
-          try { geojson = JSON.parse(atob(window.__GEO__ || '')); }
+          try {
+            var bin = atob(window.__GEO__ || '');
+            var bytes = new Uint8Array(bin.length);
+            for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            geojson = JSON.parse(new TextDecoder().decode(bytes));
+          }
           catch(e) {
             if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.mapReady) {
               window.webkit.messageHandlers.mapReady.postMessage(null);

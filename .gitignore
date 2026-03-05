@@ -16,6 +16,11 @@ xcuserdata/
 .build/
 Packages/
 
+# Build artifacts
+builds/
+scripts/
+*.dmg
+
 # macOS
 .DS_Store
 *.swp
