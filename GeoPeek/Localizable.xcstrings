@@ -63,6 +63,12 @@
         }
       }
     },
+    "Paste from Clipboard" : {
+
+    },
+    "Paste GeoJSON" : {
+
+    },
     "You can also press **Space** on any `.geojson` file in Finder to preview it." : {
 
     },

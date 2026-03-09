@@ -21,9 +21,11 @@ struct ContentView: View {
                 MapView(fileURL: url)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                WelcomeView(isDragOver: $isDragOver) {
+                WelcomeView(isDragOver: $isDragOver, onOpen: {
                     openFilePicker()
-                }
+                }, onPaste: {
+                    pasteFromClipboard()
+                })
             }
         }
         .frame(minWidth: 640, minHeight: 480)
@@ -62,6 +64,10 @@ struct ContentView: View {
                 loadedURL = url
             }
         }
+        // ⌘V
+        .onReceive(NotificationCenter.default.publisher(for: .pasteGeoJSON)) { _ in
+            pasteFromClipboard()
+        }
     }
 
     // MARK: - Helpers
@@ -95,6 +101,36 @@ struct ContentView: View {
         let ext = url.pathExtension.lowercased()
         return ext == "geojson" || ext == "json"
     }
+
+    private func pasteFromClipboard() {
+        guard let string = NSPasteboard.general.string(forType: .string),
+              !string.isEmpty else {
+            showPasteError("The clipboard is empty or doesn't contain text.")
+            return
+        }
+        guard let data = string.data(using: .utf8),
+              parseGeoJSON(data) != nil else {
+            showPasteError("The clipboard text is not valid GeoJSON.")
+            return
+        }
+        let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("Pasted.geojson")
+        do {
+            try data.write(to: tempURL, options: .atomic)
+            loadedURL = tempURL
+        } catch {
+            showPasteError("Could not process clipboard data.")
+        }
+    }
+
+    private func showPasteError(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Paste Failed"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
 }
 
 // MARK: - Welcome / drop zone
@@ -102,6 +138,7 @@ struct ContentView: View {
 struct WelcomeView: View {
     @Binding var isDragOver: Bool
     let onOpen: () -> Void
+    let onPaste: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -134,6 +171,15 @@ struct WelcomeView: View {
             .controlSize(.large)
             .buttonStyle(.borderedProminent)
             .tint(Color(red: 0.976, green: 0.451, blue: 0.086))
+
+            Spacer().frame(height: 8)
+
+            Button(action: onPaste) {
+                Label("Paste from Clipboard", systemImage: "doc.on.clipboard")
+                    .frame(minWidth: 180)
+            }
+            .controlSize(.large)
+            .buttonStyle(.bordered)
 
             Spacer().frame(height: 16)
 

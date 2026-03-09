@@ -22,6 +22,12 @@ struct GeoPeekApp: App {
                 }
                 .keyboardShortcut("o", modifiers: .command)
             }
+            CommandGroup(replacing: .pasteboard) {
+                Button("Paste GeoJSON") {
+                    NotificationCenter.default.post(name: .pasteGeoJSON, object: nil)
+                }
+                .keyboardShortcut("v", modifiers: .command)
+            }
         }
     }
 }
@@ -40,4 +46,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 extension Notification.Name {
     static let openGeoJSONFile = Notification.Name("dev.serifsadi.GeoPeek.openGeoJSONFile")
     static let openFileURLs    = Notification.Name("dev.serifsadi.GeoPeek.openFileURLs")
+    static let pasteGeoJSON    = Notification.Name("dev.serifsadi.GeoPeek.pasteGeoJSON")
 }
