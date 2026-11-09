@@ -5,8 +5,9 @@
 //   /tmp/verify-html-safety
 //
 // Not part of an Xcode target. Confirms a malicious GeoJSON file cannot break
-// out of the generated <script> or the injected user script, and that the
-// navigation policy refuses every load except the map document itself.
+// out of the generated <script> or the injected user script, that the
+// navigation policy refuses every load except the map document itself, and
+// that the plain-JSON fallback escapes file text the same way.
 
 import Foundation
 
@@ -257,8 +258,12 @@ if escSource.contains("function esc") {
 }
 
 // A root type outside the GeoJSON whitelist never reaches the map template.
+// The filename cannot promote it: detection is the root `type` only.
 let notGeoJSON = Data(#"{"type":"</script><script>alert(1)</script>","coordinates":[0,0]}"#.utf8)
 check(parseGeoJSON(notGeoJSON) == nil, "a breakout root type should be rejected")
+if case .map = renderPreview(data: notGeoJSON, fileName: "breakout.geojson") {
+    fail("a .geojson name must not override the root type check")
+}
 check(!makeErrorHTML().contains("alert(1)"), "error page must stay static")
 
 // No coordinates → null bounds, still valid JSON, no string interpolation.
@@ -337,8 +342,309 @@ check(decision(.linkActivated, URL(string: "data:text/html,<script>alert(1)</scr
 check(decision(.linkActivated, appBase, base: appBase) == .cancel, "geopeek link was opened or loaded")
 check(decision(.linkActivated, nil, base: appBase) == .cancel, "nil link was not cancelled")
 
+// --- JSON fallback ---
+
+check(jsonFallbackMaxBytes == 5 * 1024 * 1024, "fallback cap should stay 5 MB")
+check(formatByteCount(0) == "0 bytes", "0 bytes")
+check(formatByteCount(1) == "1 byte", "1 byte")
+check(formatByteCount(665) == "665 bytes", "665 bytes")
+check(formatByteCount(1024) == "1 KB", "1 KB")
+check(formatByteCount(1536) == "1.5 KB", "1.5 KB")
+check(formatByteCount(jsonFallbackMaxBytes) == "5 MB", "5 MB")
+
+let allowedTags: Set<String> = [
+    "!doctype", "html", "/html", "head", "/head", "meta", "style", "/style",
+    "body", "/body", "header", "/header", "div", "/div", "h1", "/h1",
+    "p", "/p", "pre", "/pre", "span", "/span"
+]
+let allowedClasses: Set<String> = ["title", "size", "status", "note", "k", "s", "n", "l"]
+
+func assertSafeMarkup(_ html: String, _ label: String) {
+    check(!html.lowercased().contains("<script"), "\(label) contains a script tag")
+    check(!html.lowercased().contains("</script"), "\(label) contains a script end tag")
+    check(!html.contains("\u{2028}") && !html.contains("\u{2029}"),
+          "\(label) contains a raw JS line separator")
+    check(!html.lowercased().contains("href"), "\(label) contains an href")
+    check(!html.contains("Not Valid GeoJSON"), "\(label) still shows the GeoJSON error card")
+    var spanDepth = 0
+    var i = html.startIndex
+    while let lt = html[i...].firstIndex(of: "<") {
+        let after = html.index(after: lt)
+        guard after < html.endIndex, let gt = html[after...].firstIndex(of: ">") else {
+            fail("\(label) has an unclosed tag")
+            return
+        }
+        if html[after] == "!" {
+            let decl = html[after..<gt].lowercased()
+            check(decl.hasPrefix("!doctype"), "\(label) unknown declaration <\(decl)>")
+            i = html.index(after: gt)
+            continue
+        }
+        let inside = html[after..<gt]
+        let parts = inside.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" })
+        guard let rawName = parts.first else {
+            fail("\(label) has an empty tag")
+            return
+        }
+        let name = String(rawName).lowercased()
+        check(allowedTags.contains(name), "\(label) has disallowed tag <\(inside)>")
+        if name == "span" { spanDepth += 1 }
+        if name == "/span" { spanDepth -= 1; check(spanDepth >= 0, "\(label) closed a span it never opened") }
+        for attr in parts.dropFirst() {
+            let key = String(attr.split(separator: "=", maxSplits: 1)[0]).lowercased()
+            check(key == "class" || key == "charset", "\(label) has disallowed attribute \(attr)")
+            if key == "class" {
+                let value = attr.split(separator: "=", maxSplits: 1).dropFirst().first.map(String.init) ?? ""
+                check(value.hasPrefix("\"") && value.hasSuffix("\"") && value.count >= 2,
+                      "\(label) has an unquoted class \(attr)")
+                let cls = String(value.dropFirst().dropLast())
+                check(allowedClasses.contains(cls), "\(label) has unexpected class \(cls)")
+            }
+        }
+        i = html.index(after: gt)
+    }
+    check(spanDepth == 0, "\(label) left \(spanDepth) span(s) open")
+}
+
+func decodeEntities(_ text: String) -> String {
+    var out = ""
+    var i = text.startIndex
+    while i < text.endIndex {
+        if text[i] == "&" {
+            let rest = text[i...]
+            let entities: [(String, String)] = [
+                ("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"),
+                ("&quot;", "\""), ("&#39;", "'"),
+                ("&#x2028;", "\u{2028}"), ("&#x2029;", "\u{2029}")
+            ]
+            if let match = entities.first(where: { rest.hasPrefix($0.0) }) {
+                out += match.1
+                i = text.index(i, offsetBy: match.0.count)
+                continue
+            }
+        }
+        out.append(text[i])
+        i = text.index(after: i)
+    }
+    return out
+}
+
+func preText(_ html: String) -> String {
+    guard let open = html.range(of: "<pre>"),
+          let close = html.range(of: "</pre>", range: open.upperBound..<html.endIndex) else {
+        return ""
+    }
+    let inner = String(html[open.upperBound..<close.lowerBound])
+    var stripped = ""
+    var i = inner.startIndex
+    while i < inner.endIndex {
+        if inner[i] == "<" {
+            guard let gt = inner[i...].firstIndex(of: ">") else { break }
+            i = inner.index(after: gt)
+            continue
+        }
+        stripped.append(inner[i])
+        i = inner.index(after: i)
+    }
+    return decodeEntities(stripped)
+}
+
+func canonicalJSON(_ value: Any) throws -> String {
+    let data = try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
+    return String(data: data, encoding: .utf8) ?? ""
+}
+
+let hostileObject: [String: Any] = [
+    "</script>": "</script><script>alert(1)</script>",
+    "quote": "he said \"hello\" and 'bye'",
+    "sep": "line\u{2028}sep\u{2029}tail",
+    "amp": "a&b<c>d",
+    "pre": "</pre></style>",
+]
+let hostileName = "evil\".json</script>\u{2028}"
+let hostileData = try JSONSerialization.data(withJSONObject: hostileObject)
+check(parseGeoJSON(hostileData) == nil, "hostile object must not be GeoJSON")
+let hostileHTML = makeJSONFallbackHTML(fileName: hostileName, data: hostileData)
+assertSafeMarkup(hostileHTML, "hostile object")
+check(hostileHTML.contains("evil&quot;.json&lt;/script&gt;&#x2028;"),
+      "hostile file name was not escaped: \(show(hostileHTML))")
+check(hostileHTML.contains("&lt;/script&gt;"), "script payload was dropped")
+check(hostileHTML.contains("&amp;"), "ampersand was not escaped")
+check(hostileHTML.contains("&#x2028;") && hostileHTML.contains("&#x2029;"),
+      "line separators were not escaped as entities")
+check(hostileHTML.contains("&#39;"), "single quote was not escaped")
+check(hostileHTML.contains("&quot;"), "double quote was not escaped")
+check(hostileHTML.contains("<span class=\"k\">"), "keys are not colored")
+check(hostileHTML.contains("<span class=\"s\">"), "strings are not colored")
+check(hostileHTML.contains("prefers-color-scheme: dark"), "fallback ignores dark appearance")
+check(hostileHTML.contains(formatByteCount(hostileData.count)), "header is missing the file size")
+check(!hostileHTML.contains("Not valid JSON"), "valid JSON was reported as a parse error")
+check(!hostileHTML.contains("Showing the first"), "small JSON was truncated")
+let hostileVisible = preText(hostileHTML)
+let hostileParsed = try JSONSerialization.jsonObject(with: Data(hostileVisible.utf8))
+check(try canonicalJSON(hostileParsed) == canonicalJSON(hostileObject),
+      "fallback view did not round-trip hostile JSON: \(show(hostileVisible))")
+
+// A fragment keeps the author's bytes, including a raw U+2028 inside a string.
+let fragment = Data("\"</script>\u{2028}\\\"quoted\\\"\"\n".utf8)
+let fragmentHTML = makeJSONFallbackHTML(fileName: "fragment.json", data: fragment)
+assertSafeMarkup(fragmentHTML, "fragment")
+let fragmentVisible = preText(fragmentHTML)
+let fragmentValue = try JSONSerialization.jsonObject(with: Data(fragmentVisible.utf8), options: [.fragmentsAllowed]) as? String
+check(fragmentValue == "</script>\u{2028}\"quoted\"",
+      "fragment round-trip produced \(show(fragmentValue ?? "nil"))")
+check(preText(makeJSONFallbackHTML(fileName: "empty.json", data: Data("{ }".utf8))) == "{}",
+      "empty object was not collapsed")
+check(preText(makeJSONFallbackHTML(fileName: "empty.json", data: Data("[ ]".utf8))) == "[]",
+      "empty array was not collapsed")
+let scientific = preText(makeJSONFallbackHTML(fileName: "n.json", data: Data("[-1.5e+10]".utf8)))
+check(scientific.contains("-1.5e+10"), "number spelling changed: \(show(scientific))")
+
+for literal in ["true", "false", "null"] {
+    let data = Data(literal.utf8)
+    let html = makeJSONFallbackHTML(fileName: "\(literal).json", data: data)
+    assertSafeMarkup(html, literal)
+    check(preText(html) == literal, "\(literal) was rewritten to \(show(preText(html)))")
+    check(html.contains("<span class=\"l\">\(literal)</span>"), "\(literal) is not a literal span")
+    if case .map = renderPreview(data: data, fileName: "\(literal).geojson") {
+        fail("\(literal) was treated as GeoJSON")
+    }
+}
+
+let geoTypes = [
+    "FeatureCollection", "Feature",
+    "Point", "MultiPoint", "LineString", "MultiLineString",
+    "Polygon", "MultiPolygon", "GeometryCollection"
+]
+for geoType in geoTypes {
+    let data = Data("{\"type\":\"\(geoType)\"}".utf8)
+    if case .fallback = renderPreview(data: data, fileName: "notes.json") {
+        fail("\(geoType) in a .json file was not detected as GeoJSON")
+    }
+}
+for other in ["feature", "Point ", "Foo", ""] {
+    let data = Data("{\"type\":\"\(other)\"}".utf8)
+    if case .map = renderPreview(data: data, fileName: "data.geojson") {
+        fail("type \(show(other)) was treated as GeoJSON because the name is .geojson")
+    }
+}
+let arrayRoot = Data(#"[{"type":"Point","coordinates":[0,0]}]"#.utf8)
+if case .map = renderPreview(data: arrayRoot, fileName: "points.geojson") {
+    fail("a JSON array was treated as GeoJSON")
+}
+
+func loadFixture(_ name: String) throws -> Data {
+    try Data(contentsOf: URL(fileURLWithPath: "test-fixtures/\(name)"))
+}
+
+let plain = try loadFixture("plain-object.json")
+let plainHTML = makeJSONFallbackHTML(fileName: "plain-object.json", data: plain)
+assertSafeMarkup(plainHTML, "plain-object.json")
+check(plainHTML.contains(">plain-object.json<"), "plain-object header is missing the file name")
+check(plainHTML.contains(formatByteCount(plain.count)), "plain-object header is missing the size")
+check(!plainHTML.contains("Not valid JSON"), "plain-object.json was called invalid JSON")
+check(plainHTML.contains("<span class=\"k\">"), "plain-object keys are not colored")
+check(plainHTML.contains("<span class=\"s\">"), "plain-object strings are not colored")
+check(plainHTML.contains("<span class=\"n\">"), "plain-object numbers are not colored")
+check(plainHTML.contains("<span class=\"l\">"), "plain-object literals are not colored")
+let plainText = preText(plainHTML)
+let plainVisible = try JSONSerialization.jsonObject(with: Data(plainText.utf8))
+let plainOriginal = try JSONSerialization.jsonObject(with: plain)
+check(try canonicalJSON(plainVisible) == canonicalJSON(plainOriginal),
+      "plain-object.json did not round-trip")
+if let nameAt = plainText.range(of: "\"name\""),
+   let versionAt = plainText.range(of: "\"version\""),
+   let activeAt = plainText.range(of: "\"active\"") {
+    check(nameAt.lowerBound < versionAt.lowerBound && versionAt.lowerBound < activeAt.lowerBound,
+          "pretty-printer reordered keys: \(show(plainText))")
+} else {
+    fail("plain-object.json is missing name/version/active in \(show(plainText))")
+}
+if case .map = renderPreview(data: plain, fileName: "plain-object.json") {
+    fail("plain-object.json was rendered as a map")
+}
+
+let arrayFixture = try loadFixture("array.json")
+let arrayHTML = makeJSONFallbackHTML(fileName: "array.json", data: arrayFixture)
+assertSafeMarkup(arrayHTML, "array.json")
+check(preText(arrayHTML).contains("alpha") && preText(arrayHTML).contains("beta"),
+      "array.json dropped a label")
+check(!arrayHTML.contains("Not valid JSON"), "array.json was called invalid JSON")
+let arrayVisible = try JSONSerialization.jsonObject(with: Data(preText(arrayHTML).utf8))
+let arrayOriginal = try JSONSerialization.jsonObject(with: arrayFixture)
+check(try canonicalJSON(arrayVisible) == canonicalJSON(arrayOriginal), "array.json did not round-trip")
+if case .map = renderPreview(data: arrayFixture, fileName: "array.geojson") {
+    fail("array.json was treated as GeoJSON")
+}
+
+let invalid = try loadFixture("invalid.json")
+let invalidHTML = makeJSONFallbackHTML(fileName: "invalid.json", data: invalid)
+assertSafeMarkup(invalidHTML, "invalid.json")
+check(invalidHTML.contains("Not valid JSON."), "invalid.json is missing the parse-error line")
+check(invalidHTML.contains("this is not json"), "invalid.json dropped the raw text")
+check(invalidHTML.contains(">invalid.json<"), "invalid.json header is missing the file name")
+check(!invalidHTML.contains("<span"), "invalid JSON should not be syntax-colored")
+if case .map = renderPreview(data: invalid, fileName: "invalid.geojson") {
+    fail("invalid.json was treated as GeoJSON")
+}
+
+let point = try loadFixture("point.json")
+guard let pointMeta = parseGeoJSON(point) else {
+    fail("point.json was not detected as GeoJSON")
+    throw NSError(domain: "verify", code: 1)
+}
+check(pointMeta.featureCount == 1, "point.json featureCount \(pointMeta.featureCount)")
+check(pointMeta.geometryTypes == ["Point"], "point.json types \(pointMeta.geometryTypes)")
+switch renderPreview(data: point, fileName: "point.json") {
+case .map(let html, let script):
+    check(html.contains("maplibregl"), "GeoJSON .json file did not render the map")
+    check(!html.contains("Not valid JSON") && !html.contains("Not Valid GeoJSON"),
+          "GeoJSON .json file rendered the error card")
+    check(script.hasPrefix("window.__GEO__="), "GeoJSON .json file is missing the user script")
+case .fallback:
+    fail("point.json was shown as plain JSON")
+}
+
+// Over the cap: valid JSON keeps a raw prefix and is not called invalid.
+let wideJSON = Data(("{\"k\":\"" + String(repeating: "a", count: 40) + "\"}").utf8)
+let wideHTML = makeJSONFallbackHTML(fileName: "wide.json", data: wideJSON, maxBytes: 16)
+assertSafeMarkup(wideHTML, "wide.json")
+check(wideHTML.contains("Not valid JSON") == false, "oversize valid JSON was called invalid")
+check(wideHTML.contains("Showing the first \(formatByteCount(16)) of \(formatByteCount(wideJSON.count))."),
+      "oversize valid JSON note was \(show(wideHTML))")
+check(!wideHTML.contains("<span"), "oversize JSON should not be pretty-printed")
+let wideXs = preText(wideHTML).filter { $0 == "a" }.count
+check(wideXs < 40, "oversize JSON did not truncate the prefix")
+
+// Over the cap and not JSON: prefix, note, and the parse-error line together.
+let garbage = Data(String(repeating: "x", count: 50).utf8)
+let garbageHTML = makeJSONFallbackHTML(fileName: "garbage.json", data: garbage, maxBytes: 10)
+assertSafeMarkup(garbageHTML, "garbage")
+check(garbageHTML.contains("Not valid JSON."), "oversize invalid JSON is missing the parse-error line")
+check(garbageHTML.contains("Showing the first 10 bytes of 50 bytes."),
+      "oversize invalid note was wrong")
+check(preText(garbageHTML).filter { $0 == "x" }.count == 10, "garbage prefix length")
+
+// A multibyte character on the cut stays whole (U+00E9 is two UTF-8 bytes).
+let accents = Data("ééé".utf8)
+check(accents.count == 6, "é should be 2 bytes, got \(accents.count)")
+let accentHTML = makeJSONFallbackHTML(fileName: "e.json", data: accents, maxBytes: 3)
+assertSafeMarkup(accentHTML, "accents")
+check(!accentHTML.contains("\u{FFFD}"), "UTF-8 prefix split a character")
+check(preText(accentHTML) == "é", "expected one é, got \(show(preText(accentHTML)))")
+check(accentHTML.contains("Showing the first 2 bytes of 6 bytes."), "accent note")
+
+// Pretty-printing a file that still fits can exceed the cap. Truncate that text.
+let prettySource = try JSONSerialization.data(withJSONObject: ["k": String(repeating: "b", count: 30)])
+check(prettySource.count > 20, "fixture was too small to truncate")
+let prettyHTML = makeJSONFallbackHTML(fileName: "pretty.json", data: prettySource, maxBytes: prettySource.count)
+assertSafeMarkup(prettyHTML, "pretty truncation")
+check(prettyHTML.contains("Showing the first"), "pretty-printed JSON over the cap was not truncated")
+check(!prettyHTML.contains("Not valid JSON"), "truncated pretty JSON was called invalid")
+
 if failures == 0 {
     print("ok: \(breakouts.count) payloads, fixture, user script, esc(), navigation policy")
+    print("ok: JSON fallback (hostile object, fragment, 9 GeoJSON types, plain-object.json, array.json, invalid.json, point.json, truncation)")
 } else {
     fputs("\(failures) failure(s)\n", stderr)
     exit(1)

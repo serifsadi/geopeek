@@ -108,13 +108,14 @@ struct ContentView: View {
             showPasteError("The clipboard is empty or doesn't contain text.")
             return
         }
-        guard let data = string.data(using: .utf8),
-              parseGeoJSON(data) != nil else {
-            showPasteError("The clipboard text is not valid GeoJSON.")
+        guard let data = string.data(using: .utf8) else {
+            showPasteError("Could not process clipboard data.")
             return
         }
+        // Same viewer as Open. GeoJSON maps; other text uses the JSON fallback.
+        let name = parseGeoJSON(data) != nil ? "Pasted.geojson" : "Pasted.json"
         let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("Pasted.geojson")
+            .appendingPathComponent(name)
         do {
             try data.write(to: tempURL, options: .atomic)
             loadedURL = tempURL
@@ -307,30 +308,31 @@ struct MapView: NSViewRepresentable {
         private static let baseURL = URL(string: "geopeek://r/")!
 
         func load(into wv: WKWebView, url: URL) {
+            let name = url.lastPathComponent
             Task.detached(priority: .userInitiated) {
                 guard let data = try? Data(contentsOf: url) else {
                     await MainActor.run {
                         self.documentBaseURL = Coordinator.baseURL
+                        wv.configuration.userContentController.removeAllUserScripts()
                         wv.loadHTMLString(makeErrorHTML(), baseURL: Coordinator.baseURL)
                     }
                     return
                 }
-                let b64 = data.base64EncodedString()
                 await MainActor.run {
                     self.documentBaseURL = Coordinator.baseURL
-                    guard let meta = parseGeoJSON(data) else {
-                        wv.loadHTMLString(makeErrorHTML(), baseURL: Coordinator.baseURL)
-                        return
-                    }
-                    let html = makeMapHTML(meta: meta)
-                    let ucc  = wv.configuration.userContentController
+                    let ucc = wv.configuration.userContentController
                     ucc.removeAllUserScripts()
-                    ucc.addUserScript(WKUserScript(
-                        source: geoJSONInjectionScript(base64: b64),
-                        injectionTime: .atDocumentStart,
-                        forMainFrameOnly: true
-                    ))
-                    wv.loadHTMLString(html, baseURL: Coordinator.baseURL)
+                    switch renderPreview(data: data, fileName: name) {
+                    case .map(let html, let userScript):
+                        ucc.addUserScript(WKUserScript(
+                            source: userScript,
+                            injectionTime: .atDocumentStart,
+                            forMainFrameOnly: true
+                        ))
+                        wv.loadHTMLString(html, baseURL: Coordinator.baseURL)
+                    case .fallback(let html):
+                        wv.loadHTMLString(html, baseURL: Coordinator.baseURL)
+                    }
                 }
             }
         }

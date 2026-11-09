@@ -4,17 +4,20 @@
 <dict>
 	<key>NSExtension</key>
 	<dict>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<key>QLSupportedContentTypes</key>
+			<array>
+				<string>public.geojson</string>
+				<string>public.json</string>
+			</array>
+			<key>QLThumbnailMinimumSize</key>
+			<integer>0</integer>
+		</dict>
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.quicklook.thumbnail</string>
 		<key>NSExtensionPrincipalClass</key>
 		<string>$(PRODUCT_MODULE_NAME).ThumbnailProvider</string>
 	</dict>
-	<key>QLSupportedContentTypes</key>
-	<array>
-		<string>public.geojson</string>
-		<string>public.json</string>
-	</array>
-	<key>QLThumbnailMinimumSize</key>
-	<integer>0</integer>
 </dict>
 </plist>

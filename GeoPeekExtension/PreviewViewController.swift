@@ -16,7 +16,7 @@ class PreviewViewController: NSViewController, QLPreviewingController, WKScriptM
     private var webView: WKWebView!
     private var spinner: NSProgressIndicator!
     /// Base URL of the document most recently passed to `loadHTMLString`.
-    /// `nil` allows only `about:blank` (parse errors, and the initial empty page).
+    /// `nil` allows only `about:blank` (the text fallback, and the initial empty page).
     private var documentBaseURL: URL?
 
     override func loadView() {
@@ -58,35 +58,36 @@ class PreviewViewController: NSViewController, QLPreviewingController, WKScriptM
     }
 
     func preparePreviewOfFile(at url: URL) async throws {
-        // Read + parse on a background thread.
-        // I/O errors propagate as throws; parse failures show a styled error page.
-        struct Parsed { let base64: String; let meta: GeoJSONMeta }
-
-        let result: Parsed? = try await Task.detached(priority: .userInitiated) {
-            let data = try Data(contentsOf: url)          // I/O failure → throws
-            guard let meta = parseGeoJSON(data) else { return nil }
-            return Parsed(base64: data.base64EncodedString(), meta: meta)
+        // Read on a background thread. I/O errors propagate as throws.
+        // GeoJSON renders the map; any other bytes render the text fallback.
+        // Quick Look does not fall through to the system JSON preview.
+        let fileName = url.lastPathComponent
+        let preview = try await Task.detached(priority: .userInitiated) {
+            let data = try Data(contentsOf: url)
+            return renderPreview(data: data, fileName: fileName)
         }.value
 
         let baseURL = Bundle(for: type(of: self)).resourceURL
 
         await MainActor.run {
-            if let p = result {
+            let ucc = self.webView.configuration.userContentController
+            ucc.removeAllUserScripts()
+            switch preview {
+            case .map(let html, let userScript):
                 self.documentBaseURL = baseURL
-                let ucc = self.webView.configuration.userContentController
-                ucc.removeAllUserScripts()
                 ucc.addUserScript(WKUserScript(
-                    source: geoJSONInjectionScript(base64: p.base64),
+                    source: userScript,
                     injectionTime: .atDocumentStart,
                     forMainFrameOnly: true
                 ))
                 self.spinner.isHidden = false
                 self.spinner.startAnimation(nil)
-                self.webView.loadHTMLString(makeMapHTML(meta: p.meta), baseURL: baseURL)
-            } else {
+                self.webView.loadHTMLString(html, baseURL: baseURL)
+            case .fallback(let html):
                 self.documentBaseURL = nil
+                self.spinner.stopAnimation(nil)
                 self.spinner.isHidden = true
-                self.webView.loadHTMLString(makeErrorHTML(), baseURL: nil)
+                self.webView.loadHTMLString(html, baseURL: nil)
             }
         }
     }
