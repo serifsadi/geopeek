@@ -18,6 +18,11 @@ class PreviewViewController: NSViewController, QLPreviewingController, WKScriptM
     /// Base URL of the document most recently passed to `loadHTMLString`.
     /// `nil` allows only `about:blank` (the text fallback, and the initial empty page).
     private var documentBaseURL: URL?
+    /// Map page held until the preview view is in a window with a non-zero
+    /// frame. `preparePreviewOfFile` returns before Quick Look lays the panel
+    /// out; loading then bakes a 0×0 or 1× viewport into the map canvas.
+    private var pendingMapHTML: String?
+    private var pendingMapBaseURL: URL?
 
     override func loadView() {
         let config = WKWebViewConfiguration()
@@ -56,6 +61,31 @@ class PreviewViewController: NSViewController, QLPreviewingController, WKScriptM
     override func viewWillAppear() {
         super.viewWillAppear()
         view.window?.acceptsMouseMovedEvents = true
+        loadMapPreviewIfReady()
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        loadMapPreviewIfReady()
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        loadMapPreviewIfReady()
+    }
+
+    /// Loads the stashed map page once Auto Layout has given the web view the
+    /// panel's frame inside a window, so `devicePixelRatio` and the viewport
+    /// match the Retina backing scale instead of the pre-appearance placeholder.
+    private func loadMapPreviewIfReady() {
+        guard let html = pendingMapHTML else { return }
+        guard view.window != nil else { return }
+        let frame = webView.bounds
+        guard frame.width > 1, frame.height > 1 else { return }
+        let baseURL = pendingMapBaseURL
+        pendingMapHTML = nil
+        pendingMapBaseURL = nil
+        webView.loadHTMLString(html, baseURL: baseURL)
     }
 
     func preparePreviewOfFile(at url: URL) async throws {
@@ -83,8 +113,12 @@ class PreviewViewController: NSViewController, QLPreviewingController, WKScriptM
                 ))
                 self.spinner.isHidden = false
                 self.spinner.startAnimation(nil)
-                self.webView.loadHTMLString(html, baseURL: baseURL)
+                self.pendingMapHTML = html
+                self.pendingMapBaseURL = baseURL
+                self.loadMapPreviewIfReady()
             case .fallback(let html):
+                self.pendingMapHTML = nil
+                self.pendingMapBaseURL = nil
                 self.documentBaseURL = nil
                 self.spinner.stopAnimation(nil)
                 self.spinner.isHidden = true

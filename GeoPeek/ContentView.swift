@@ -273,6 +273,9 @@ struct MapView: NSViewRepresentable {
         config.userContentController.add(context.coordinator, name: "basemap")
 
         let wv = WKWebView(frame: .zero, configuration: config)
+        // SwiftUI sizes this view by frame. The mask keeps the page's viewport
+        // attached to the window if the superview resizes via autoresizing.
+        wv.autoresizingMask = [.width, .height]
         wv.navigationDelegate = context.coordinator
         wv.uiDelegate = context.coordinator
         // Explicit background prevents white flash before the map renders.

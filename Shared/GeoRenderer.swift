@@ -1366,7 +1366,77 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
           mapOptions.zoom   = 1;
         }
 
-        var map = new maplibregl.Map(mapOptions);
+        // Assigned in mountMap(). Declared here so applyBasemap (above) and the
+        // controls (inside mountMap) share one instance.
+        var map;
+
+        // MapLibre 4.7.1 observes the container, but it discards the first
+        // ResizeObserver notification and only then resizes. Quick Look's
+        // real panel size often arrives as that single dropped notification
+        // (the constructor already sampled a 0×0 or 1× viewport), so the
+        // canvas keeps the provisional CSS size. On a 2× display that size
+        // is half the panel on each axis. pixelRatio is left unset so
+        // getPixelRatio() keeps reading the live devicePixelRatio; a frozen
+        // option would pin the drawing buffer to the unsettled value.
+        function mapCanvasStale() {
+          var el = document.getElementById('map');
+          var canvas = map.getCanvas();
+          var w = el.clientWidth;
+          var h = el.clientHeight;
+          if (!w || !h) return false;
+          // Same clamp as MapLibre's default maxCanvasSize [4096, 4096], so a
+          // fullscreen Retina panel does not look stale after a correct resize.
+          var dpr = window.devicePixelRatio || 1;
+          var maxEdge = 4096;
+          var bw = w * dpr;
+          var bh = h * dpr;
+          var clamp = Math.min(bw > maxEdge ? maxEdge / bw : 1, bh > maxEdge ? maxEdge / bh : 1);
+          var ratio = clamp * dpr;
+          return canvas.style.width !== (w + 'px') ||
+                 canvas.style.height !== (h + 'px') ||
+                 canvas.width !== Math.floor(ratio * w) ||
+                 canvas.height !== Math.floor(ratio * h);
+        }
+
+        function bindMapViewport() {
+          var el = document.getElementById('map');
+          var queued = false;
+          function sync() {
+            queued = false;
+            if (!map || !mapCanvasStale()) return;
+            map.resize();
+          }
+          function requestSync() {
+            if (queued || !map) return;
+            queued = true;
+            requestAnimationFrame(sync);
+          }
+          if (typeof ResizeObserver === 'function') {
+            new ResizeObserver(requestSync).observe(el);
+          }
+          window.addEventListener('resize', requestSync);
+          function watchPixelRatio() {
+            var dpr = window.devicePixelRatio || 1;
+            var media = window.matchMedia('(resolution: ' + dpr + 'dppx)');
+            function onChange() {
+              if (media.removeEventListener) media.removeEventListener('change', onChange);
+              else if (media.removeListener) media.removeListener(onChange);
+              // The ratio can update a frame before the CSS viewport does.
+              requestSync();
+              requestAnimationFrame(requestSync);
+              watchPixelRatio();
+            }
+            if (media.addEventListener) media.addEventListener('change', onChange);
+            else if (media.addListener) media.addListener(onChange);
+          }
+          watchPixelRatio();
+          requestSync();
+        }
+
+        function mountMap() {
+          if (map) return;
+          map = new maplibregl.Map(mapOptions);
+          bindMapViewport();
 
         map.on('error', function(e) {
           var info = basemapErrorInfo(e);
@@ -1718,6 +1788,46 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
             window.webkit.messageHandlers.mapReady.postMessage(null);
           }
         });
+        }
+
+        // #map is width/height 100%. While the WKWebView frame is still 0×0
+        // those percentages resolve to 0, and MapLibre then substitutes a
+        // 400×300 canvas. Wait for a real box (or a couple of seconds) so
+        // the constructor's fitBounds and drawing buffer see the panel.
+        function mountMapWhenSized() {
+          if (map) return;
+          var el = document.getElementById('map');
+          function ready() {
+            return el.clientWidth > 0 && el.clientHeight > 0;
+          }
+          if (ready()) {
+            mountMap();
+            return;
+          }
+          var frames = 0;
+          var waiter = null;
+          function attempt() {
+            if (map) return;
+            if (ready() || frames > 120) {
+              if (waiter) waiter.disconnect();
+              mountMap();
+              return;
+            }
+            frames++;
+            requestAnimationFrame(attempt);
+          }
+          if (typeof ResizeObserver === 'function') {
+            waiter = new ResizeObserver(function() {
+              if (!ready() || map) return;
+              waiter.disconnect();
+              mountMap();
+            });
+            waiter.observe(el);
+          }
+          requestAnimationFrame(attempt);
+        }
+
+        mountMapWhenSized();
       </script>
     </body>
     </html>
