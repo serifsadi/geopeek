@@ -1,7 +1,7 @@
 // Exercises the real parser and HTML builder in Shared/GeoRenderer.swift.
 //
 //   swiftc -o /tmp/verify-html-safety \
-//     Shared/GeoRenderer.swift test-fixtures/verify-html-safety.swift
+//     Shared/GeoRenderer.swift Shared/GeoJSONSniff.swift test-fixtures/verify-html-safety.swift
 //   /tmp/verify-html-safety
 //
 // Not part of an Xcode target. Confirms a malicious GeoJSON file cannot break
@@ -537,6 +537,54 @@ func loadFixture(_ name: String) throws -> Data {
     try Data(contentsOf: URL(fileURLWithPath: "test-fixtures/\(name)"))
 }
 
+func checkThumbnailSniff() throws {
+    func sniffFile(_ name: String) throws -> String? {
+        GeoJSONSniff.rootType(in: try loadFixture(name))
+    }
+    func sniff(_ text: String) -> String? {
+        GeoJSONSniff.rootType(in: Data(text.utf8))
+    }
+
+    check(try sniffFile("point.json") == "Feature", "point.json root type")
+    check(try sniffFile("polygon.geojson") == "Feature", "polygon.geojson root type")
+    check(try sniffFile("xss-breakout.geojson") == "FeatureCollection", "xss root type")
+    check(try sniffFile("plain-object.json") == nil, "plain-object.json was sniffed as GeoJSON")
+    check(try sniffFile("array.json") == nil, "array.json was sniffed as GeoJSON")
+    check(try sniffFile("invalid.json") == nil, "invalid.json was sniffed as GeoJSON")
+
+    for geoType in [
+        "Feature", "FeatureCollection",
+        "Point", "MultiPoint",
+        "LineString", "MultiLineString",
+        "Polygon", "MultiPolygon",
+        "GeometryCollection"
+    ] {
+        check(sniff("{\"type\":\"\(geoType)\"}") == geoType, "\(geoType) root type")
+        check(sniff("{\n  \"name\": \"x\", \"type\" : \"\(geoType)\" }") == geoType,
+              "\(geoType) was not found after another root key")
+    }
+    check(sniff("{\"type\":\"Point \"}") == nil, "padded type name was accepted")
+    check(sniff("{\"type\":\"feature\"}") == nil, "lowercase feature was accepted")
+    check(sniff("{\"type\":1}") == nil, "numeric type was accepted")
+    check(sniff("  \n{\"type\":\"Polygon\"}") == "Polygon", "leading whitespace")
+    let bom = Data([0xEF, 0xBB, 0xBF]) + Data("{\"type\":\"Point\"}".utf8)
+    check(GeoJSONSniff.rootType(in: bom) == "Point", "UTF-8 BOM")
+
+    // A type buried in a nested value or in a string is not the root type.
+    check(sniff("{\"note\":{\"type\":\"Point\"},\"name\":1}") == nil, "nested type was accepted")
+    check(sniff("{\"note\":\"\\\"type\\\": \\\"Point\\\"\"}") == nil, "type inside a string was accepted")
+    check(sniff("{\"features\":[{\"type\":\"Point\"}]}") == nil, "feature type was treated as the root")
+
+    // The prefix ends before the root type. Do not guess.
+    let cut = Data("{\"features\":[1,2,3,4".utf8)
+    check(GeoJSONSniff.rootType(in: cut) == nil, "truncated prefix was treated as GeoJSON")
+    let late = "{\"name\":\"" + String(repeating: "a", count: 100) + "\",\"type\":\"Point\"}"
+    check(GeoJSONSniff.rootType(in: Data(late.prefix(40).utf8)) == nil,
+          "type past the prefix was accepted")
+    check(GeoJSONSniff.rootType(in: Data(late.utf8)) == "Point",
+          "type after a long string key was missed")
+}
+
 let plain = try loadFixture("plain-object.json")
 let plainHTML = makeJSONFallbackHTML(fileName: "plain-object.json", data: plain)
 assertSafeMarkup(plainHTML, "plain-object.json")
@@ -642,9 +690,12 @@ assertSafeMarkup(prettyHTML, "pretty truncation")
 check(prettyHTML.contains("Showing the first"), "pretty-printed JSON over the cap was not truncated")
 check(!prettyHTML.contains("Not valid JSON"), "truncated pretty JSON was called invalid")
 
+try checkThumbnailSniff()
+
 if failures == 0 {
     print("ok: \(breakouts.count) payloads, fixture, user script, esc(), navigation policy")
     print("ok: JSON fallback (hostile object, fragment, 9 GeoJSON types, plain-object.json, array.json, invalid.json, point.json, truncation)")
+    print("ok: thumbnail sniff (root type only, prefix cap, nested type ignored)")
 } else {
     fputs("\(failures) failure(s)\n", stderr)
     exit(1)

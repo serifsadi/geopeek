@@ -64,7 +64,17 @@
 		CC000007CC5399AA00DCA15B /* Exceptions for "GeoPeekThumbnailExtension" folder in "GeoPeekThumbnailExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				GeoPeekThumbnailExtension.entitlements,
 				Info.plist,
+			);
+			target = CC00000BCC5399AA00DCA15B /* GeoPeekThumbnailExtension */;
+		};
+		CC300002CC5399AA00DCA15B /* Exceptions for "Shared" folder in "GeoPeekThumbnailExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				GeoRenderer.swift,
+				maplibre-gl.css,
+				maplibre-gl.js,
 			);
 			target = CC00000BCC5399AA00DCA15B /* GeoPeekThumbnailExtension */;
 		};
@@ -104,6 +114,9 @@
 		};
 		CC300001CC5399AA00DCA15B /* Shared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				CC300002CC5399AA00DCA15B /* Exceptions for "Shared" folder in "GeoPeekThumbnailExtension" target */,
+			);
 			path = Shared;
 			sourceTree = "<group>";
 		};
@@ -233,6 +246,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				CC000006CC5399AA00DCA15B /* GeoPeekThumbnailExtension */,
+				CC300001CC5399AA00DCA15B /* Shared */,
 			);
 			name = GeoPeekThumbnailExtension;
 			packageProductDependencies = (
@@ -618,6 +632,7 @@
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 1;
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = 7W797GT86L;
+				CODE_SIGN_ENTITLEMENTS = GeoPeekThumbnailExtension/GeoPeekThumbnailExtension.entitlements;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = NO;
@@ -650,6 +665,7 @@
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 1;
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = 7W797GT86L;
+				CODE_SIGN_ENTITLEMENTS = GeoPeekThumbnailExtension/GeoPeekThumbnailExtension.entitlements;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = NO;

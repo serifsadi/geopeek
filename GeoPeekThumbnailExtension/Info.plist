@@ -11,7 +11,7 @@
 				<string>public.geojson</string>
 				<string>public.json</string>
 			</array>
-			<key>QLThumbnailMinimumSize</key>
+			<key>QLThumbnailMinimumDimension</key>
 			<integer>0</integer>
 		</dict>
 		<key>NSExtensionPointIdentifier</key>
