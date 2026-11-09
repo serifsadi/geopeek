@@ -9,3 +9,5 @@
 - Quick Look renders JSON that is not GeoJSON as a read-only colored page, and other text as a size-capped dump (#3).
 - Finder thumbnails are a static GeoPeek icon. `.geojson` returns the icon without reading the file. `.json` is sniffed for a GeoJSON root type, and anything else keeps the system thumbnail (#4).
 - Release builds enable the hardened runtime and are signed with a Developer ID Application certificate. The release script notarizes the app and the disk image.
+- GeoPeek is back in Finder's Open With menu as a viewer for `.geojson`. The handler rank is Alternate, so it does not become the default app.
+- Upgrading from 0.1.x or 0.2.0 replaces an ad-hoc signature with a Developer ID signature. macOS shows the prompt that GeoPeekExtension differs from previously opened versions, once.

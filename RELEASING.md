@@ -4,6 +4,8 @@
 
 The script notarizes the app and staples that ticket, then builds the disk image from the stapled app, signs the image, and notarizes and staples the image. Apple's notary service is contacted twice.
 
+People upgrading from 0.1.x or 0.2.0 get one macOS prompt that GeoPeekExtension differs from previously opened versions. Those older copies were ad-hoc signed. This build is signed with a Developer ID certificate.
+
 ## One-time setup
 
 1. On Apple Developer team `7W797GT86L`, create a **Developer ID Application** certificate and install it in the login keychain. Confirm it is present:
