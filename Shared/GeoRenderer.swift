@@ -14,6 +14,35 @@ import WebKit
 #if canImport(AppKit)
 import AppKit
 #endif
+#if os(macOS)
+import os
+
+// The map page posts `{ok, url, message}` once per basemap load. Subsystem is
+// the host bundle id (`dev.serifsadi.GeoPeek` in the app,
+// `dev.serifsadi.GeoPeek.GeoPeekExtension` in Quick Look).
+private let basemapLog = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "dev.serifsadi.GeoPeek",
+    category: "basemap"
+)
+#endif
+
+func logBasemapStatus(_ body: Any) {
+    #if os(macOS)
+    let info = body as? [String: Any]
+    let url = info?["url"] as? String ?? ""
+    let message = info?["message"] as? String ?? ""
+    let ok = (info?["ok"] as? Bool) ?? (info?["ok"] as? NSNumber)?.boolValue ?? false
+    if info == nil {
+        basemapLog.error("basemap unavailable error=\(String(describing: body), privacy: .public)")
+    } else if ok {
+        basemapLog.info("basemap style loaded url=\(url, privacy: .public)")
+    } else {
+        basemapLog.error("basemap unavailable url=\(url, privacy: .public) error=\(message, privacy: .public)")
+    }
+    #else
+    _ = body
+    #endif
+}
 
 // MARK: - Data model
 
@@ -916,6 +945,15 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
         .stats-types { margin-top: 3px; font-size: 11px; color: var(--label2); }
         .stats-vertices { margin-top: 2px; font-size: 10.5px; color: var(--label3); }
 
+        #basemap-notice {
+          right: 10px; bottom: 44px;
+          padding: 6px 10px 7px;
+          font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+          font-size: 12px; font-weight: 600; line-height: 1;
+          letter-spacing: -0.01em;
+          white-space: nowrap;
+        }
+
         #coords {
           bottom: 10px; left: 10px;
           padding: 6px 10px 7px;
@@ -1108,6 +1146,7 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
     </head>
     <body>
       <div id="stats" class="panel"></div>
+      <div id="basemap-notice" class="panel" role="status" hidden></div>
       <div id="coords" class="panel"></div>
       <div id="map"></div>
       <div id="table-view"></div>
@@ -1203,21 +1242,114 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
           }
         }
 
+        // One report per basemap load. Tile errors arrive in a burst; style.load
+        // re-arms the latch so a later tile or sprite failure still reports once.
+        var basemapNotedFailure = -1;
+        var basemapNotedSuccess = -1;
+        var basemapAppliedGeneration = -1;
+        var basemapAppliedURL = '';
+
+        function showBasemapNotice() {
+          var el = document.getElementById('basemap-notice');
+          if (!el) return;
+          // Fixed label. Error text goes to the log, never the page.
+          el.textContent = 'Basemap unavailable';
+          el.hidden = false;
+        }
+
+        function hideBasemapNotice() {
+          var el = document.getElementById('basemap-notice');
+          if (el) el.hidden = true;
+        }
+
+        function postBasemap(payload) {
+          if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.basemap) {
+            window.webkit.messageHandlers.basemap.postMessage(payload);
+          }
+        }
+
+        function noteBasemapFailure(generation, message, url) {
+          if (generation !== basemapGeneration) return;
+          if (basemapNotedFailure === generation) return;
+          basemapNotedFailure = generation;
+          showBasemapNotice();
+          postBasemap({
+            ok: false,
+            message: String(message || 'basemap failed'),
+            url: String(url || '')
+          });
+        }
+
+        function noteBasemapSuccess(generation, url) {
+          if (generation !== basemapGeneration) return;
+          if (basemapNotedSuccess === generation) return;
+          basemapNotedSuccess = generation;
+          basemapNotedFailure = -1;
+          hideBasemapNotice();
+          postBasemap({ ok: true, message: '', url: String(url || '') });
+        }
+
+        // GeoJSON problems use the data and highlight sources. A different
+        // source id, a tile, or the style host is the basemap.
+        function basemapErrorInfo(e) {
+          if (!e || !e.error) return null;
+          var sourceId = e.sourceId || (e.source && e.source.id) || '';
+          if (sourceId === 'data' || sourceId === 'highlight') return null;
+          var message = e.error.message ? String(e.error.message) : '';
+          var url = e.error.url ? String(e.error.url) : '';
+          if (!message && !url) return null;
+          if (message.indexOf('GeoJSON') !== -1) return null;
+          if (message === 'AbortError' || message.indexOf('abort') !== -1 || message.indexOf('Abort') !== -1) return null;
+          if (sourceId || e.tile) {
+            return { message: message || ('basemap source ' + (sourceId || 'tile')), url: url };
+          }
+          var haystack = message + ' ' + url;
+          if (haystack.indexOf('openfreemap.org') !== -1
+              || message.indexOf('AJAXError:') === 0
+              || message === 'Failed to fetch'
+              || message === 'Load failed'
+              || haystack.indexOf('NSURLErrorDomain') !== -1
+              || haystack.indexOf('NetworkError') !== -1) {
+            return { message: message, url: url };
+          }
+          var sourceMatch = /on source "([^"]+)"/.exec(message);
+          if (sourceMatch && sourceMatch[1] !== 'data' && sourceMatch[1] !== 'highlight') {
+            return { message: message, url: url };
+          }
+          return null;
+        }
+
         // fetch() is a subresource load. The WKNavigationDelegate only sees
         // document navigations and link clicks, so it does not cancel style,
-        // tile, glyph, or sprite requests.
+        // tile, glyph, or sprite requests. A failed fetch leaves the plain
+        // background; geometry keeps drawing.
         function applyBasemap(dark) {
           var generation = ++basemapGeneration;
-          if (typeof fetch !== 'function') return;
-          fetch(basemapURL(dark)).then(function(response) {
-            if (!response.ok) throw new Error(String(response.status));
+          var url = basemapURL(dark);
+          if (typeof fetch !== 'function') {
+            noteBasemapFailure(generation, 'fetch unavailable', url);
+            return;
+          }
+          fetch(url).then(function(response) {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
             return response.json();
           }).then(function(style) {
-            if (generation !== basemapGeneration || !style || style.version !== 8) return;
-            map.setStyle(style, { diff: false, validate: false, transformStyle: keepDataLayers });
-          }).catch(function() {
-            // Offline, or the style host refused the document. Geometry keeps
-            // drawing on the plain background. No error overlay.
+            if (generation !== basemapGeneration) return;
+            if (!style || style.version !== 8) {
+              noteBasemapFailure(generation, 'style document was not a MapLibre style', url);
+              return;
+            }
+            basemapAppliedGeneration = generation;
+            basemapAppliedURL = url;
+            try {
+              map.setStyle(style, { diff: false, validate: false, transformStyle: keepDataLayers });
+            } catch (err) {
+              if (basemapAppliedGeneration === generation) basemapAppliedGeneration = -1;
+              noteBasemapFailure(generation, err && err.message ? String(err.message) : 'setStyle failed', url);
+            }
+          }).catch(function(err) {
+            var message = err && err.message ? String(err.message) : 'fetch failed';
+            noteBasemapFailure(generation, message, url);
           });
         }
 
@@ -1235,6 +1367,25 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
         }
 
         var map = new maplibregl.Map(mapOptions);
+
+        map.on('error', function(e) {
+          var info = basemapErrorInfo(e);
+          if (!info) return;
+          var generation = basemapAppliedGeneration > 0 ? basemapAppliedGeneration : basemapGeneration;
+          noteBasemapFailure(generation, info.message, info.url || basemapAppliedURL);
+        });
+
+        map.on('style.load', function() {
+          if (basemapAppliedGeneration < 0 || basemapAppliedGeneration !== basemapGeneration) return;
+          var style = map.getStyle ? map.getStyle() : null;
+          var sources = (style && style.sources) || {};
+          var remote = false;
+          for (var id in sources) {
+            if (id !== 'data' && id !== 'highlight') { remote = true; break; }
+          }
+          if (!remote) return;
+          noteBasemapSuccess(basemapAppliedGeneration, basemapAppliedURL);
+        });
 
         map.addControl(new maplibregl.NavigationControl(), 'top-right');
         map.addControl({
