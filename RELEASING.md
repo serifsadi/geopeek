@@ -19,8 +19,10 @@ The script notarizes the app and staples that ticket, then builds the disk image
 4. Store the notary credentials in the login keychain. Run this yourself in Terminal. It prompts for the Apple ID, the team ID, and the app-specific password. The release script never takes the password:
 
    ```bash
-   xcrun notarytool store-credentials "GeoPeek"
+   xcrun notarytool store-credentials "geopeek-notary"
    ```
+
+   The profile name is any label you choose. `NOTARY_PROFILE` has to be that same label. The keychain profile in use is `geopeek-notary`.
 
 5. Install `create-dmg` and leave it on `PATH`. The release script does not call Homebrew itself:
 
@@ -41,11 +43,11 @@ From the repository root:
 
 ```bash
 export DEVELOPMENT_TEAM="7W797GT86L"
-export NOTARY_PROFILE="GeoPeek"
+export NOTARY_PROFILE="geopeek-notary"
 ./scripts/release.sh
 ```
 
-`DEVELOPMENT_TEAM` is written into a temporary copy of `scripts/ExportOptions.plist`. The committed plist has no team ID. `NOTARY_PROFILE` is the name passed to `notarytool store-credentials`.
+`DEVELOPMENT_TEAM` is written into a temporary copy of `scripts/ExportOptions.plist`. The committed plist has no team ID. `NOTARY_PROFILE` is whatever name you gave `notarytool store-credentials`. `geopeek-notary` is the profile stored for this team.
 
 Set `SIGN_IDENTITY` only when `codesign` needs a longer certificate name to sign the disk image. Leave it unset to use the Developer ID that signed the app.
 

@@ -191,14 +191,16 @@ spctl_exec() {
 spctl_dmg() {
   local target="$1"
   local out
-  out=$(spctl -a -t open --context context:primary-signature "$target" 2>&1) || die "spctl rejected $target:"$'\n'"$out"
+  out=$(spctl -a -vv -t open --context context:primary-signature "$target" 2>&1) || die "spctl rejected $target:"$'\n'"$out"
   printf '%s\n' "$out"
   printf '%s\n' "$out" | grep -qi "accepted" || die "spctl did not accept $target"
 }
 
 signing_authority() {
   local target="$1"
-  codesign -dv --verbose=4 "$target" 2>&1 | awk -F= '/^Authority=/ { print substr($0, index($0, "=") + 1); exit }'
+  local info
+  info=$(codesign -dv --verbose=4 "$target" 2>&1) || return 1
+  printf '%s\n' "$info" | awk '/^Authority=/ && !found { print substr($0, index($0, "=") + 1); found = 1 }'
 }
 
 WORK=""
@@ -269,8 +271,9 @@ main() {
   local dmg_final="$root/GeoPeek-${VERSION}.dmg"
 
   echo "Archiving (clean Release, hardened runtime)..."
-  # The extension targets set CODE_SIGN_IDENTITY[sdk=macosx*] to "-" for local
-  # ad-hoc builds. Pass the same conditional so this archive uses Developer ID.
+  # Extension targets set CODE_SIGN_IDENTITY[sdk=macosx*] to "-" for local
+  # ad-hoc builds. A plain CODE_SIGN_IDENTITY on the command line overrides
+  # that. xcodebuild does not treat SETTING[sdk=macosx*]=... as a conditional.
   xcodebuild clean archive \
     -project "$project" \
     -scheme GeoPeek \
@@ -280,11 +283,8 @@ main() {
     -derivedDataPath "$WORK/DerivedData" \
     -allowProvisioningUpdates \
     DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
-    "DEVELOPMENT_TEAM[sdk=macosx*]=$DEVELOPMENT_TEAM" \
-    CODE_SIGN_STYLE=Automatic \
-    "CODE_SIGN_STYLE[sdk=macosx*]=Automatic" \
+    CODE_SIGN_STYLE=Manual \
     CODE_SIGN_IDENTITY="Developer ID Application" \
-    "CODE_SIGN_IDENTITY[sdk=macosx*]=Developer ID Application" \
     ENABLE_HARDENED_RUNTIME=YES
 
   cp "$export_template" "$export_plist"
