@@ -174,6 +174,37 @@ func countCaseInsensitive(_ needle: String, in text: String) -> Int {
 check(countCaseInsensitive("</script", in: html) == 2,
       "expected exactly two </script sequences, found \(countCaseInsensitive("</script", in: html))")
 
+// Basemap is OpenFreeMap's keyless positron/dark styles. CARTO's raster host
+// and the old opacity-gated layer must not come back.
+check(html.contains("https://tiles.openfreemap.org/styles/dark"), "missing OpenFreeMap dark style")
+check(html.contains("https://tiles.openfreemap.org/styles/positron"), "missing OpenFreeMap positron style")
+check(html.contains("function plainStyle"), "missing plain-background fallback")
+check(!html.contains("cartocdn.com") && !html.contains("carto.com"),
+      "CARTO basemap is still referenced")
+check(!html.contains("raster-opacity"), "raster fade gate is still in the page")
+
+guard let inlineOpen = html.range(of: "<script>\n", options: .backwards) else {
+    fail("inline map script missing")
+    throw NSError(domain: "verify", code: 1)
+}
+let inlineRest = html[inlineOpen.upperBound...]
+guard let inlineClose = inlineRest.range(of: "</script>") else {
+    fail("inline map script not closed")
+    throw NSError(domain: "verify", code: 1)
+}
+let inlineScript = String(inlineRest[..<inlineClose.lowerBound])
+let scriptFile = FileManager.default.temporaryDirectory.appendingPathComponent("geopeek-map-script.js")
+try inlineScript.write(to: scriptFile, atomically: true, encoding: .utf8)
+let syntax = Process()
+syntax.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+syntax.arguments = ["node", "--check", scriptFile.path]
+let syntaxErr = Pipe()
+syntax.standardError = syntaxErr
+try syntax.run()
+syntax.waitUntilExit()
+let syntaxText = String(data: syntaxErr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+check(syntax.terminationStatus == 0, "generated map script failed node --check: \(syntaxText)")
+
 guard let metaStart = html.range(of: "var META = ") else {
     fail("META assignment missing")
     throw NSError(domain: "verify", code: 1)
@@ -282,8 +313,20 @@ check(decision(.documentLoad, resources, base: resources) == .allow, "Quick Look
 check(decision(.documentLoad, bundledJS, base: resources) == .cancel, "bundle JS file allowed as the document")
 check(decision(.documentLoad, fileSecret, base: resources) == .cancel, "arbitrary file URL allowed as the document")
 
-check(decision(.linkActivated, carto, base: appBase) == .openExternally(carto), "CARTO attribution not opened outside")
+check(decision(.linkActivated, carto, base: appBase) == .openExternally(carto), "https attribution not opened outside")
 check(decision(.linkActivated, osm, base: appBase) == .openExternally(osm), "OSM attribution not opened outside")
+let openFreeMap = URL(string: "https://openfreemap.org")!
+let openMapTiles = URL(string: "https://www.openmaptiles.org/")!
+check(decision(.linkActivated, openFreeMap, base: appBase) == .openExternally(openFreeMap),
+      "OpenFreeMap attribution not opened outside")
+check(decision(.linkActivated, openMapTiles, base: appBase) == .openExternally(openMapTiles),
+      "OpenMapTiles attribution not opened outside")
+// A style or tile URL is not a navigation the delegate is asked to judge.
+// If one were delivered as a document load, it must not replace the preview.
+let styleURL = URL(string: "https://tiles.openfreemap.org/styles/dark")!
+let tileURL = URL(string: "https://tiles.openfreemap.org/planet/20261101_080013_pt/0/0/0.pbf")!
+check(decision(.documentLoad, styleURL, base: appBase) == .cancel, "style URL allowed as the document")
+check(decision(.documentLoad, tileURL, base: resources) == .cancel, "tile URL allowed as the document")
 check(decision(.linkActivated, URL(string: "HTTPS://carto.com/attributions")!, base: appBase)
         == .openExternally(URL(string: "HTTPS://carto.com/attributions")!),
       "uppercase scheme not treated as a browser link")
