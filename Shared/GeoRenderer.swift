@@ -621,31 +621,90 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
           (META.vertexCount > 0 ? '<div class="stats-vertices">' +
             META.vertexCount.toLocaleString() + '&#x2009;vertices</div>' : '');
 
-        var isDark     = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        var cartoTheme = isDark ? 'dark_all' : 'light_all';
-        var bgColor    = isDark ? '#1c1c1e'  : '#f2f2f7';
-        var tileUrls   = ['a','b','c','d'].map(function(s) {
-          return 'https://' + s + '.basemaps.cartocdn.com/' + cartoTheme + '/{z}/{x}/{y}@2x.png';
-        });
+        var isDark      = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var bgColor     = isDark ? '#1c1c1e' : '#f2f2f7';
         var dataColor   = isDark ? '#f97316' : '#c2410c';
         var fillOpacity = isDark ? 0.25      : 0.15;
         var emptyFC     = { type: 'FeatureCollection', features: [] };
+        // Incremented on each appearance change so a slow response cannot
+        // replace a newer style. The plain background stays until a style
+        // document has been fetched.
+        var basemapGeneration = 0;
+
+        // OpenFreeMap's public styles: no API key, no per-view billing.
+        // Positron and Dark match the old light_all / dark_all pairing.
+        // Attribution is inside the TileJSON (OpenFreeMap, OpenMapTiles, OSM)
+        // and MapLibre adds it when that source loads.
+        function basemapURL(dark) {
+          return dark
+            ? 'https://tiles.openfreemap.org/styles/dark'
+            : 'https://tiles.openfreemap.org/styles/positron';
+        }
+
+        function plainStyle(color) {
+          return {
+            version: 8,
+            sources: {},
+            layers: [{ id: 'bg', type: 'background', paint: { 'background-color': color } }]
+          };
+        }
+
+        // Carry GeoJSON layers across a basemap swap. The plain background
+        // layer is not copied; the OpenFreeMap style has its own.
+        function keepDataLayers(previous, next) {
+          if (!previous || !previous.sources) return next;
+          if (previous.sources.data) next.sources.data = previous.sources.data;
+          if (previous.sources.highlight) next.sources.highlight = previous.sources.highlight;
+          var keep = { fill: 1, line: 1, circle: 1, 'hl-fill': 1, 'hl-line': 1, 'hl-circle': 1 };
+          var extra = (previous.layers || []).filter(function(layer) { return keep[layer.id]; });
+          next.layers = (next.layers || []).concat(extra);
+          return next;
+        }
+
+        function paintData() {
+          var color  = isDark ? '#f97316' : '#c2410c';
+          var fill   = isDark ? 0.25      : 0.15;
+          var hlFill = isDark ? 0.50      : 0.35;
+          var stroke = isDark ? '#000000' : '#ffffff';
+          var bg     = isDark ? '#1c1c1e' : '#f2f2f7';
+          if (!map.getLayer) return;
+          if (map.getLayer('bg')) map.setPaintProperty('bg', 'background-color', bg);
+          if (map.getLayer('fill')) {
+            map.setPaintProperty('fill', 'fill-color', color);
+            map.setPaintProperty('fill', 'fill-opacity', fill);
+          }
+          if (map.getLayer('line')) map.setPaintProperty('line', 'line-color', color);
+          if (map.getLayer('circle')) {
+            map.setPaintProperty('circle', 'circle-color', color);
+            map.setPaintProperty('circle', 'circle-stroke-color', stroke);
+          }
+          if (map.getLayer('hl-fill')) {
+            map.setPaintProperty('hl-fill', 'fill-color', color);
+            map.setPaintProperty('hl-fill', 'fill-opacity', hlFill);
+          }
+        }
+
+        // fetch() is a subresource load. The WKNavigationDelegate only sees
+        // document navigations and link clicks, so it does not cancel style,
+        // tile, glyph, or sprite requests.
+        function applyBasemap(dark) {
+          var generation = ++basemapGeneration;
+          if (typeof fetch !== 'function') return;
+          fetch(basemapURL(dark)).then(function(response) {
+            if (!response.ok) throw new Error(String(response.status));
+            return response.json();
+          }).then(function(style) {
+            if (generation !== basemapGeneration || !style || style.version !== 8) return;
+            map.setStyle(style, { diff: false, validate: false, transformStyle: keepDataLayers });
+          }).catch(function() {
+            // Offline, or the style host refused the document. Geometry keeps
+            // drawing on the plain background. No error overlay.
+          });
+        }
 
         var mapOptions = {
           container: 'map',
-          style: {
-            version: 8,
-            sources: {
-              carto: {
-                type: 'raster', tiles: tileUrls, tileSize: 256,
-                attribution: '\\u00a9 <a href="https://carto.com/attributions">CARTO</a> \\u00a9 <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'
-              }
-            },
-            layers: [
-              { id: 'bg',    type: 'background', paint: { 'background-color': bgColor } },
-              { id: 'carto', type: 'raster',     source: 'carto', paint: { 'raster-opacity': 0 } }
-            ]
-          }
+          style: plainStyle(bgColor)
         };
 
         if (META.bounds) {
@@ -849,57 +908,16 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
 
         map.on('load', function() {
 
-          // Tile fade-in on initial load
-          map.on('idle', function checkTiles() {
-            if (!map.areTilesLoaded()) return;
-            map.off('idle', checkTiles);
-            var t0 = null, dur = 600;
-            function tick(ts) {
-              if (!t0) t0 = ts;
-              var p = Math.min(1, (ts - t0) / dur);
-              map.setPaintProperty('carto', 'raster-opacity', p);
-              if (p < 1) requestAnimationFrame(tick);
-            }
-            requestAnimationFrame(tick);
-          });
-
-          // Dynamic appearance change — CSS custom properties update automatically,
-          // but MapLibre JS-set styles (tile URLs, layer colours) need explicit updates.
+          // CSS custom properties follow the appearance on their own. The
+          // basemap URL and GeoJSON paint are set from JS, so they do not.
           window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
-            var dark       = e.matches;
-            var newBg      = dark ? '#1c1c1e'  : '#f2f2f7';
-            var newColor   = dark ? '#f97316'  : '#c2410c';
-            var newFill    = dark ? 0.25       : 0.15;
-            var newHlFill  = dark ? 0.50       : 0.35;
-            var newStroke  = dark ? '#000000'  : '#ffffff';
-            var newTheme   = dark ? 'dark_all' : 'light_all';
-            var newTiles   = ['a','b','c','d'].map(function(s) {
-              return 'https://' + s + '.basemaps.cartocdn.com/' + newTheme + '/{z}/{x}/{y}@2x.png';
-            });
-
-            map.setPaintProperty('bg', 'background-color', newBg);
-            map.getSource('carto').setTiles(newTiles);
-            map.setPaintProperty('fill',   'fill-color',   newColor);
-            map.setPaintProperty('fill',   'fill-opacity', newFill);
-            map.setPaintProperty('line',   'line-color',   newColor);
-            map.setPaintProperty('circle', 'circle-color', newColor);
-            map.setPaintProperty('circle', 'circle-stroke-color', newStroke);
-            map.setPaintProperty('hl-fill', 'fill-color',   newColor);
-            map.setPaintProperty('hl-fill', 'fill-opacity', newHlFill);
-
-            map.setPaintProperty('carto', 'raster-opacity', 0);
-            map.once('idle', function fadeTiles() {
-              if (!map.areTilesLoaded()) { map.once('idle', fadeTiles); return; }
-              var t0 = null;
-              function tick(ts) {
-                if (!t0) t0 = ts;
-                var p = Math.min(1, (ts - t0) / 400);
-                map.setPaintProperty('carto', 'raster-opacity', p);
-                if (p < 1) requestAnimationFrame(tick);
-              }
-              requestAnimationFrame(tick);
-            });
+            isDark = e.matches;
+            paintData();
+            applyBasemap(isDark);
           });
+          // Started before GeoJSON is parsed. fetch resolves on a later turn,
+          // after the data layers below exist, and keepDataLayers copies them.
+          applyBasemap(isDark);
 
           // Parse GeoJSON injected by Swift as window.__GEO__ (base64)
           var geojson;
