@@ -67,6 +67,10 @@ Download the latest `.dmg` from [Releases](https://github.com/serifsadi/geopeek/
 - [MapLibre GL JS](https://maplibre.org/) for map rendering
 - Quick Look & Thumbnail extensions
 
+## Releasing
+
+Maintainers: see [RELEASING.md](RELEASING.md).
+
 ## License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
