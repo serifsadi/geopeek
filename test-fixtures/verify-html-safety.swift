@@ -181,6 +181,11 @@ check(countCaseInsensitive("</script", in: html) == 2,
 check(html.contains("https://tiles.openfreemap.org/styles/dark"), "missing OpenFreeMap dark style")
 check(html.contains("https://tiles.openfreemap.org/styles/positron"), "missing OpenFreeMap positron style")
 check(html.contains("function plainStyle"), "missing plain-background fallback")
+check(html.contains("id=\"basemap-notice\""), "missing basemap notice")
+check(html.contains("el.textContent = 'Basemap unavailable'"), "basemap notice must be set with textContent")
+check(!html.contains("basemap-notice').innerHTML") && !html.contains("notice.innerHTML"),
+      "basemap notice must not be filled with innerHTML")
+check(html.contains("messageHandlers.basemap"), "basemap status is not posted to Swift")
 check(!html.contains("cartocdn.com") && !html.contains("carto.com"),
       "CARTO basemap is still referenced")
 check(!html.contains("raster-opacity"), "raster fade gate is still in the page")

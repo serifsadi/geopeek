@@ -270,6 +270,7 @@ struct MapView: NSViewRepresentable {
         // loadHTMLString on macOS without loadFileURL, but a scheme handler does).
         config.setURLSchemeHandler(MapLibreSchemeHandler(), forURLScheme: "geopeek")
         config.userContentController.add(context.coordinator, name: "mapReady")
+        config.userContentController.add(context.coordinator, name: "basemap")
 
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.navigationDelegate = context.coordinator
@@ -339,6 +340,10 @@ struct MapView: NSViewRepresentable {
 
         func userContentController(_ ucc: WKUserContentController,
                                    didReceive message: WKScriptMessage) {
+            if message.name == "basemap" {
+                logBasemapStatus(message.body)
+                return
+            }
             // mapReady — no spinner in the standalone app, nothing to do.
         }
 

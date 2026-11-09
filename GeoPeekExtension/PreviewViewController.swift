@@ -23,6 +23,7 @@ class PreviewViewController: NSViewController, QLPreviewingController, WKScriptM
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent()
         config.userContentController.add(self, name: "mapReady")
+        config.userContentController.add(self, name: "basemap")
 
         webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = self
@@ -96,6 +97,10 @@ class PreviewViewController: NSViewController, QLPreviewingController, WKScriptM
 
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage) {
+        if message.name == "basemap" {
+            logBasemapStatus(message.body)
+            return
+        }
         guard message.name == "mapReady" else { return }
         spinner.stopAnimation(nil)
         spinner.isHidden = true
