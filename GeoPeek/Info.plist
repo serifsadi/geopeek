@@ -17,5 +17,29 @@
 			</array>
 		</dict>
 	</array>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>public.geojson</string>
+			<key>UTTypeDescription</key>
+			<string>GeoJSON Document</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>geojson</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/geo+json</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>

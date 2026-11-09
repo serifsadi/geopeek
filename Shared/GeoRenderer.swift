@@ -2,9 +2,9 @@
 //  GeoRenderer.swift
 //  Shared — compiled into both GeoPeek and GeoPeekExtension
 //
-//  Single source of truth for GeoJSON parsing and map HTML generation.
-//  Changes here apply to the QL preview extension and the standalone app
-//  simultaneously.
+//  Single source of truth for GeoJSON parsing, the map page, and the
+//  plain-JSON / raw-text fallback. Changes here apply to the QL preview
+//  extension and the standalone app simultaneously.
 //
 
 import Foundation
@@ -46,11 +46,20 @@ private let _validGeoJSONTypes: Set<String> = _geometryTypes.union([
     "FeatureCollection", "Feature"
 ])
 
-/// Parses `data` as GeoJSON.  Returns `nil` when the data is not valid GeoJSON.
-/// Thread-safe — uses only local state.
+/// Parses `data` as GeoJSON. Returns nil unless the root value is a JSON
+/// object whose `type` is `Feature`, `FeatureCollection`, or one of the seven
+/// RFC 7946 geometry types. The filename is not consulted — `.json` and
+/// `.geojson` take this same path. Thread-safe; uses only local state.
 func parseGeoJSON(_ data: Data) -> GeoJSONMeta? {
-    guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          let type = root["type"] as? String,
+    guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        return nil
+    }
+    return geoJSONMeta(from: root)
+}
+
+/// `root` is an already-parsed JSON object. Nil unless `type` is GeoJSON.
+private func geoJSONMeta(from root: [String: Any]) -> GeoJSONMeta? {
+    guard let type = root["type"] as? String,
           _validGeoJSONTypes.contains(type) else { return nil }
 
     var meta      = GeoJSONMeta()
@@ -142,6 +151,27 @@ private func escapeForInlineScript(_ json: String) -> String {
         .replacingOccurrences(of: ">", with: "\\u003e")
         .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
         .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
+}
+
+/// HTML-text counterpart of `escapeForInlineScript`. Fallback pages put file
+/// text in element bodies, so the same characters (plus quotes) are written
+/// as entities. `&` is replaced first. The decoded glyphs are unchanged.
+private func escapeHTMLText(_ text: String) -> String {
+    var out = ""
+    out.reserveCapacity(text.count)
+    for ch in text {
+        switch ch {
+        case "&": out += "&amp;"
+        case "<": out += "&lt;"
+        case ">": out += "&gt;"
+        case "\"": out += "&quot;"
+        case "'": out += "&#39;"
+        case "\u{2028}": out += "&#x2028;"
+        case "\u{2029}": out += "&#x2029;"
+        default: out.append(ch)
+        }
+    }
+    return out
 }
 
 private func mapMetaObject(_ meta: GeoJSONMeta) -> [String: Any] {
@@ -256,7 +286,8 @@ func openMapLinkInBrowser(_ url: URL) {
 
 // MARK: - HTML generation
 
-/// Error page shown when a file can't be parsed as GeoJSON.
+/// Static page for a file that could not be read. Text that parsed, including
+/// JSON that is not GeoJSON, uses `makeJSONFallbackHTML` instead.
 func makeErrorHTML() -> String {
     return """
     <!DOCTYPE html>
@@ -308,6 +339,494 @@ func makeErrorHTML() -> String {
         <h1>Not Valid GeoJSON</h1>
         <p class="sub">This file doesn't contain recognisable GeoJSON data and cannot be previewed.</p>
       </div>
+    </body>
+    </html>
+    """
+}
+
+// MARK: - JSON / raw-text fallback
+
+/// Most file text a fallback page will embed. Larger files keep a prefix.
+let jsonFallbackMaxBytes = 5 * 1024 * 1024
+
+enum RenderedPreview {
+    /// Map page, plus the `window.__GEO__` script injected at document start.
+    case map(html: String, userScript: String)
+    /// Read-only JSON or raw text. No script, no file-controlled URLs.
+    case fallback(html: String)
+}
+
+/// Map when `data` is GeoJSON; otherwise the read-only fallback. The decision
+/// is the root `type`, never the filename. The file is parsed once.
+func renderPreview(data: Data,
+                   fileName: String,
+                   maxFallbackBytes: Int = jsonFallbackMaxBytes) -> RenderedPreview {
+    if let value = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) {
+        if let root = value as? [String: Any], let meta = geoJSONMeta(from: root) {
+            return .map(
+                html: makeMapHTML(meta: meta),
+                userScript: geoJSONInjectionScript(base64: data.base64EncodedString())
+            )
+        }
+        return .fallback(html: jsonFallbackHTML(
+            fileName: fileName, data: data, maxBytes: maxFallbackBytes, parsed: value))
+    }
+    return .fallback(html: jsonFallbackHTML(
+        fileName: fileName, data: data, maxBytes: maxFallbackBytes, parsed: nil))
+}
+
+/// Read-only page for a file that is not GeoJSON.
+///
+/// Valid JSON under `maxBytes` is pretty-printed and lightly colored. Anything
+/// else is the raw text, with a parse-error line when the bytes are not JSON.
+/// Above `maxBytes` the page shows an escaped prefix and a truncation note
+/// instead of pretty-printing. Every copied character goes through
+/// `escapeHTMLText`; the page has no script and no file-controlled attributes.
+func makeJSONFallbackHTML(fileName: String,
+                          data: Data,
+                          maxBytes: Int = jsonFallbackMaxBytes) -> String {
+    let parsed = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+    return jsonFallbackHTML(fileName: fileName, data: data, maxBytes: maxBytes, parsed: parsed)
+}
+
+private func jsonFallbackHTML(fileName: String,
+                              data: Data,
+                              maxBytes: Int,
+                              parsed: Any?) -> String {
+    let cap = max(0, maxBytes)
+    let displayName = fileName.isEmpty ? "Untitled" : fileName
+    let oversize = data.count > cap
+
+    let body: String
+    let note: String?
+    let parseError: Bool
+
+    if oversize {
+        let prefix = utf8Prefix(data, maxBytes: cap)
+        body = escapeHTMLText(String(decoding: prefix, as: UTF8.self))
+        note = "Showing the first \(formatByteCount(prefix.count)) of \(formatByteCount(data.count))."
+        parseError = parsed == nil
+    } else if let value = parsed, let source = prettyJSONText(value, original: data) {
+        let capped = prefixUTF8(source, maxBytes: cap)
+        body = highlightJSON(capped.text)
+        note = capped.truncated
+            ? "Showing the first \(formatByteCount(capped.bytes)) of the pretty-printed JSON."
+            : nil
+        parseError = false
+    } else {
+        body = escapeHTMLText(String(decoding: data, as: UTF8.self))
+        note = nil
+        parseError = true
+    }
+
+    return jsonFallbackDocument(
+        fileName: escapeHTMLText(displayName),
+        byteCount: escapeHTMLText(formatByteCount(data.count)),
+        parseError: parseError,
+        note: note.map(escapeHTMLText),
+        body: body
+    )
+}
+
+private func prettyJSONText(_ value: Any, original: Data) -> String? {
+    if JSONSerialization.isValidJSONObject(value) {
+        // Re-indent the original text so key order and token spelling survive.
+        // JSONSerialization's object graph does not promise either.
+        if var text = String(data: original, encoding: .utf8) {
+            if text.hasPrefix("\u{feff}") { text.removeFirst() }
+            return prettyPrintedJSON(text)
+        }
+        if let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted]),
+           let text = String(data: data, encoding: .utf8) {
+            return text
+        }
+    }
+    // Top-level string, number, bool, or null. The source is already JSON.
+    if var text = String(data: original, encoding: .utf8) {
+        if text.hasPrefix("\u{feff}") { text.removeFirst() }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return String(decoding: original, as: UTF8.self)
+}
+
+/// Two-space pretty JSON. Tokens are copied verbatim; only insignificant
+/// whitespace is replaced. The input is JSON that already parsed.
+private func prettyPrintedJSON(_ json: String) -> String {
+    var out = ""
+    out.reserveCapacity(json.count + json.count / 8)
+    var i = json.startIndex
+    var indent = 0
+
+    func skipWhitespace() {
+        while i < json.endIndex {
+            switch json[i] {
+            case " ", "\n", "\r", "\t":
+                i = json.index(after: i)
+            default:
+                return
+            }
+        }
+    }
+
+    func newline() {
+        out.append("\n")
+        if indent > 0 {
+            out.append(String(repeating: " ", count: indent * 2))
+        }
+    }
+
+    skipWhitespace()
+    while i < json.endIndex {
+        let c = json[i]
+        if c == " " || c == "\n" || c == "\r" || c == "\t" {
+            skipWhitespace()
+            continue
+        }
+        if c == "{" || c == "[" {
+            out.append(c)
+            i = json.index(after: i)
+            indent += 1
+            skipWhitespace()
+            let close: Character = c == "{" ? "}" : "]"
+            if i < json.endIndex && json[i] == close {
+                out.append(close)
+                i = json.index(after: i)
+                indent -= 1
+            } else {
+                newline()
+            }
+            continue
+        }
+        if c == "}" || c == "]" {
+            indent = max(0, indent - 1)
+            newline()
+            out.append(c)
+            i = json.index(after: i)
+            continue
+        }
+        if c == "," {
+            out.append(",")
+            i = json.index(after: i)
+            newline()
+            continue
+        }
+        if c == ":" {
+            out.append(": ")
+            i = json.index(after: i)
+            continue
+        }
+        if c == "\"" {
+            let end = endOfJSONString(json, from: i)
+            out.append(contentsOf: json[i..<end])
+            i = end
+            continue
+        }
+        let start = i
+        while i < json.endIndex {
+            switch json[i] {
+            case " ", "\n", "\r", "\t", "{", "}", "[", "]", ",", ":", "\"":
+                break
+            default:
+                i = json.index(after: i)
+                continue
+            }
+            break
+        }
+        if i == start {
+            out.append(c)
+            i = json.index(after: i)
+        } else {
+            out.append(contentsOf: json[start..<i])
+        }
+    }
+    return out
+}
+
+private struct JSONFrame {
+    var object: Bool
+    var slot: JSONSlot
+}
+
+private enum JSONSlot {
+    case key, colon, value, comma
+}
+
+/// Wraps keys, strings, numbers, and literals in spans. Punctuation stays
+/// plain text. A truncated or invalid slice cannot leave a span open: each
+/// token's tags are emitted together, and a cut string runs to the end.
+private func highlightJSON(_ json: String) -> String {
+    var html = ""
+    html.reserveCapacity(json.utf8.count + json.utf8.count / 2 + 64)
+    var i = json.startIndex
+    var stack: [JSONFrame] = []
+
+    func emit(_ text: String, cls: String?) {
+        let escaped = escapeHTMLText(text)
+        if let cls {
+            html += "<span class=\""
+            html += cls
+            html += "\">"
+            html += escaped
+            html += "</span>"
+        } else {
+            html += escaped
+        }
+    }
+
+    func finishValue() {
+        guard !stack.isEmpty else { return }
+        stack[stack.count - 1].slot = .comma
+    }
+
+    while i < json.endIndex {
+        let c = json[i]
+        if c == " " || c == "\n" || c == "\r" || c == "\t" {
+            let start = i
+            repeat { i = json.index(after: i) }
+            while i < json.endIndex &&
+                (json[i] == " " || json[i] == "\n" || json[i] == "\r" || json[i] == "\t")
+            emit(String(json[start..<i]), cls: nil)
+            continue
+        }
+        if c == "\"" {
+            let end = endOfJSONString(json, from: i)
+            let isKey = stack.last.map { $0.object && $0.slot == .key } ?? false
+            if isKey {
+                stack[stack.count - 1].slot = .colon
+            } else {
+                finishValue()
+            }
+            emit(String(json[i..<end]), cls: isKey ? "k" : "s")
+            i = end
+            continue
+        }
+        if c == "{" || c == "[" {
+            emit(String(c), cls: nil)
+            stack.append(JSONFrame(object: c == "{", slot: c == "{" ? .key : .value))
+            i = json.index(after: i)
+            continue
+        }
+        if c == "}" || c == "]" {
+            emit(String(c), cls: nil)
+            if !stack.isEmpty { stack.removeLast() }
+            finishValue()
+            i = json.index(after: i)
+            continue
+        }
+        if c == ":" {
+            emit(":", cls: nil)
+            if let top = stack.last, top.object, top.slot == .colon {
+                stack[stack.count - 1].slot = .value
+            }
+            i = json.index(after: i)
+            continue
+        }
+        if c == "," {
+            emit(",", cls: nil)
+            if let top = stack.last, top.slot == .comma {
+                stack[stack.count - 1].slot = top.object ? .key : .value
+            }
+            i = json.index(after: i)
+            continue
+        }
+        if c == "-" || (c >= "0" && c <= "9") {
+            var j = json.index(after: i)
+            while j < json.endIndex {
+                let d = json[j]
+                if (d >= "0" && d <= "9") || d == "." || d == "e" || d == "E" || d == "+" || d == "-" {
+                    j = json.index(after: j)
+                } else {
+                    break
+                }
+            }
+            emit(String(json[i..<j]), cls: "n")
+            finishValue()
+            i = j
+            continue
+        }
+        if let end = matchJSONLiteral(json, from: i) {
+            emit(String(json[i..<end]), cls: "l")
+            finishValue()
+            i = end
+            continue
+        }
+        emit(String(c), cls: nil)
+        i = json.index(after: i)
+    }
+    return html
+}
+
+private func endOfJSONString(_ json: String, from i: String.Index) -> String.Index {
+    var j = json.index(after: i)
+    while j < json.endIndex {
+        let c = json[j]
+        j = json.index(after: j)
+        if c == "\\" {
+            if j < json.endIndex { j = json.index(after: j) }
+            continue
+        }
+        if c == "\"" { return j }
+    }
+    return json.endIndex
+}
+
+private func matchJSONLiteral(_ json: String, from i: String.Index) -> String.Index? {
+    for word in ["true", "false", "null"] {
+        guard json[i...].hasPrefix(word) else { continue }
+        let end = json.index(i, offsetBy: word.count)
+        if end < json.endIndex {
+            let next = json[end]
+            if next.isLetter || next.isNumber || next == "_" { return nil }
+        }
+        return end
+    }
+    return nil
+}
+
+private func prefixUTF8(_ text: String, maxBytes: Int) -> (text: String, bytes: Int, truncated: Bool) {
+    let data = Data(text.utf8)
+    if data.count <= maxBytes {
+        return (text, data.count, false)
+    }
+    let prefix = utf8Prefix(data, maxBytes: maxBytes)
+    return (String(decoding: prefix, as: UTF8.self), prefix.count, true)
+}
+
+/// Longest prefix of `data` that is at most `maxBytes` and does not split a
+/// UTF-8 sequence. The cut looks at the first excluded byte: a continuation
+/// means the character started earlier and is dropped whole.
+private func utf8Prefix(_ data: Data, maxBytes: Int) -> Data {
+    guard maxBytes > 0, !data.isEmpty else { return Data() }
+    if data.count <= maxBytes { return data }
+    var i = maxBytes
+    while i > 0 && (data[i] & 0b1100_0000) == 0b1000_0000 {
+        i -= 1
+    }
+    return Data(data.prefix(i))
+}
+
+func formatByteCount(_ bytes: Int) -> String {
+    let n = max(0, bytes)
+    if n < 1024 {
+        return n == 1 ? "1 byte" : "\(n) bytes"
+    }
+    let units = ["KB", "MB", "GB", "TB"]
+    var value = Double(n)
+    var unit = 0
+    while value >= 1024 && unit < units.count {
+        value /= 1024
+        unit += 1
+    }
+    let tenths = Int((value * 10).rounded())
+    var whole = tenths / 10
+    let frac = abs(tenths % 10)
+    if whole >= 1024 && unit < units.count {
+        whole = 1
+        unit += 1
+    }
+    let label = units[unit - 1]
+    if frac == 0 {
+        return "\(whole) \(label)"
+    }
+    return "\(whole).\(frac) \(label)"
+}
+
+private func jsonFallbackDocument(fileName: String,
+                                  byteCount: String,
+                                  parseError: Bool,
+                                  note: String?,
+                                  body: String) -> String {
+    let status = parseError ? "\n    <p class=\"status\">Not valid JSON.</p>" : ""
+    let noteHTML = note.map { "\n    <p class=\"note\">\($0)</p>" } ?? ""
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        :root {
+          color-scheme: light dark;
+          --bg:     #f2f2f7;
+          --header: rgba(255,255,255,0.92);
+          --label:  rgba(0,0,0,0.847);
+          --label2: rgba(60,60,67,0.60);
+          --sep:    rgba(60,60,67,0.29);
+          --key:    #9a3412;
+          --str:    #3f6212;
+          --num:    #1e40af;
+          --lit:    #6d28d9;
+          --warn:   #9a3412;
+        }
+        @media (prefers-color-scheme: dark) {
+          :root {
+            --bg:     #1c1c1e;
+            --header: rgba(28,28,30,0.94);
+            --label:  rgba(255,255,255,0.847);
+            --label2: rgba(235,235,245,0.60);
+            --sep:    rgba(84,84,88,0.65);
+            --key:    #fdba74;
+            --str:    #d9f99d;
+            --num:    #93c5fd;
+            --lit:    #d8b4fe;
+            --warn:   #fdba74;
+          }
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; }
+        body {
+          overflow: auto;
+          background: var(--bg);
+          color: var(--label);
+          font: 12px/1.5 ui-monospace, 'SF Mono', Menlo, monospace;
+          -webkit-font-smoothing: antialiased;
+        }
+        header {
+          position: sticky; top: 0; z-index: 1;
+          padding: 10px 14px;
+          background: var(--header);
+          border-bottom: 0.5px solid var(--sep);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+        }
+        .title {
+          display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+        }
+        h1 {
+          min-width: 0;
+          font: 600 13px/1.3 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+          letter-spacing: -0.01em;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .size {
+          flex: none;
+          font: 12px/1.3 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+          color: var(--label2);
+        }
+        .status, .note {
+          margin-top: 4px;
+          font: 12px/1.4 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+        }
+        .status { color: var(--warn); }
+        .note { color: var(--label2); }
+        pre {
+          padding: 12px 14px 28px;
+          white-space: pre;
+          tab-size: 2;
+        }
+        .k { color: var(--key); }
+        .s { color: var(--str); }
+        .n { color: var(--num); }
+        .l { color: var(--lit); }
+      </style>
+    </head>
+    <body>
+      <header>
+        <div class="title">
+          <h1>\(fileName)</h1>
+          <p class="size">\(byteCount)</p>
+        </div>\(status)\(noteHTML)
+      </header>
+      <pre>\(body)</pre>
     </body>
     </html>
     """
