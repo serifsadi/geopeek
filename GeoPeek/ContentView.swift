@@ -271,6 +271,8 @@ struct MapView: NSViewRepresentable {
         config.userContentController.add(context.coordinator, name: "mapReady")
 
         let wv = WKWebView(frame: .zero, configuration: config)
+        wv.navigationDelegate = context.coordinator
+        wv.uiDelegate = context.coordinator
         // Explicit background prevents white flash before the map renders.
         wv.wantsLayer = true
         let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
@@ -294,8 +296,11 @@ struct MapView: NSViewRepresentable {
     // MARK: - Coordinator
 
     @MainActor
-    final class Coordinator: NSObject, WKScriptMessageHandler {
+    final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
         var currentURL: URL?
+        /// Base URL of the document most recently passed to `loadHTMLString`.
+        /// `nil` allows only `about:blank` (the web view's initial empty page).
+        private var documentBaseURL: URL?
 
         // Base URL for the HTML: relative paths ("maplibre-gl.js") resolve to
         // "geopeek://r/maplibre-gl.js", which our scheme handler intercepts.
@@ -305,12 +310,14 @@ struct MapView: NSViewRepresentable {
             Task.detached(priority: .userInitiated) {
                 guard let data = try? Data(contentsOf: url) else {
                     await MainActor.run {
+                        self.documentBaseURL = Coordinator.baseURL
                         wv.loadHTMLString(makeErrorHTML(), baseURL: Coordinator.baseURL)
                     }
                     return
                 }
                 let b64 = data.base64EncodedString()
                 await MainActor.run {
+                    self.documentBaseURL = Coordinator.baseURL
                     guard let meta = parseGeoJSON(data) else {
                         wv.loadHTMLString(makeErrorHTML(), baseURL: Coordinator.baseURL)
                         return
@@ -319,7 +326,7 @@ struct MapView: NSViewRepresentable {
                     let ucc  = wv.configuration.userContentController
                     ucc.removeAllUserScripts()
                     ucc.addUserScript(WKUserScript(
-                        source: "window.__GEO__='\(b64)';",
+                        source: geoJSONInjectionScript(base64: b64),
                         injectionTime: .atDocumentStart,
                         forMainFrameOnly: true
                     ))
@@ -331,6 +338,44 @@ struct MapView: NSViewRepresentable {
         func userContentController(_ ucc: WKUserContentController,
                                    didReceive message: WKScriptMessage) {
             // mapReady — no spinner in the standalone app, nothing to do.
+        }
+
+        func webView(_ webView: WKWebView,
+                     decidePolicyFor navigationAction: WKNavigationAction,
+                     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            let decision = decideMapNavigation(
+                kind: mapNavigationKind(navigationAction.navigationType),
+                url: navigationAction.request.url,
+                isMainFrame: navigationAction.targetFrame?.isMainFrame ?? true,
+                documentBaseURL: documentBaseURL
+            )
+            switch decision {
+            case .allow:
+                decisionHandler(.allow)
+            case .openExternally(let url):
+                decisionHandler(.cancel)
+                openMapLinkInBrowser(url)
+            case .cancel:
+                decisionHandler(.cancel)
+            }
+        }
+
+        func webView(_ webView: WKWebView,
+                     createWebViewWith configuration: WKWebViewConfiguration,
+                     for navigationAction: WKNavigationAction,
+                     windowFeatures: WKWindowFeatures) -> WKWebView? {
+            // MapLibre's logo link uses target="_blank", which asks for a new
+            // web view instead of navigating this one. Open it outside.
+            if let url = navigationAction.request.url,
+               case .openExternally(let external) = decideMapNavigation(
+                    kind: .linkActivated,
+                    url: url,
+                    isMainFrame: false,
+                    documentBaseURL: documentBaseURL
+               ) {
+                openMapLinkInBrowser(external)
+            }
+            return nil
         }
     }
 }
