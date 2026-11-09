@@ -1172,6 +1172,14 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
           return typeLabels[t] || t;
         }).join('  \\u00b7  ');
 
+        // Top-level: the stats line below calls esc() while the script is
+        // still evaluating. A function inside mountMap() is not in scope here.
+        function esc(s) {
+          return String(s)
+            .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+        }
+
         document.getElementById('stats').innerHTML =
           '<div class="stats-count">'  + META.featureCount.toLocaleString() +
           '&#x2009;feature' + (META.featureCount !== 1 ? 's' : '') + '</div>' +
@@ -1489,12 +1497,6 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
 
         function fitToData() {
           if (META.bounds) map.fitBounds(META.bounds, { padding: 40, maxZoom: 16 });
-        }
-
-        function esc(s) {
-          return String(s)
-            .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-            .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
         }
 
         var activePopup = null;
