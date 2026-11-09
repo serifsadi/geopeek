@@ -11,8 +11,8 @@
 				<string>public.geojson</string>
 				<string>public.json</string>
 			</array>
-			<key>QLThumbnailMinimumSize</key>
-			<integer>0</integer>
+			<key>QLThumbnailMinimumDimension</key>
+			<integer>16</integer>
 		</dict>
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.quicklook.thumbnail</string>

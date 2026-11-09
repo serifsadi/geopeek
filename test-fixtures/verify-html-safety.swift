@@ -1,7 +1,8 @@
 // Exercises the real parser and HTML builder in Shared/GeoRenderer.swift.
 //
 //   swiftc -o /tmp/verify-html-safety \
-//     Shared/GeoRenderer.swift test-fixtures/verify-html-safety.swift
+//     Shared/GeoRenderer.swift Shared/GeoJSONSniff.swift Shared/ThumbnailLayout.swift \
+//     test-fixtures/verify-html-safety.swift
 //   /tmp/verify-html-safety
 //
 // Not part of an Xcode target. Confirms a malicious GeoJSON file cannot break
@@ -537,6 +538,81 @@ func loadFixture(_ name: String) throws -> Data {
     try Data(contentsOf: URL(fileURLWithPath: "test-fixtures/\(name)"))
 }
 
+func checkThumbnailSniff() throws {
+    func sniffFile(_ name: String) throws -> String? {
+        GeoJSONSniff.rootType(in: try loadFixture(name))
+    }
+    func sniff(_ text: String) -> String? {
+        GeoJSONSniff.rootType(in: Data(text.utf8))
+    }
+
+    check(try sniffFile("point.json") == "Feature", "point.json root type")
+    check(try sniffFile("polygon.geojson") == "Feature", "polygon.geojson root type")
+    check(try sniffFile("xss-breakout.geojson") == "FeatureCollection", "xss root type")
+    check(try sniffFile("plain-object.json") == nil, "plain-object.json was sniffed as GeoJSON")
+    check(try sniffFile("array.json") == nil, "array.json was sniffed as GeoJSON")
+    check(try sniffFile("invalid.json") == nil, "invalid.json was sniffed as GeoJSON")
+
+    for geoType in [
+        "Feature", "FeatureCollection",
+        "Point", "MultiPoint",
+        "LineString", "MultiLineString",
+        "Polygon", "MultiPolygon",
+        "GeometryCollection"
+    ] {
+        check(sniff("{\"type\":\"\(geoType)\"}") == geoType, "\(geoType) root type")
+        check(sniff("{\n  \"name\": \"x\", \"type\" : \"\(geoType)\" }") == geoType,
+              "\(geoType) was not found after another root key")
+    }
+    check(sniff("{\"type\":\"Point \"}") == nil, "padded type name was accepted")
+    check(sniff("{\"type\":\"feature\"}") == nil, "lowercase feature was accepted")
+    check(sniff("{\"type\":1}") == nil, "numeric type was accepted")
+    check(sniff("  \n{\"type\":\"Polygon\"}") == "Polygon", "leading whitespace")
+    let bom = Data([0xEF, 0xBB, 0xBF]) + Data("{\"type\":\"Point\"}".utf8)
+    check(GeoJSONSniff.rootType(in: bom) == "Point", "UTF-8 BOM")
+
+    // A type buried in a nested value or in a string is not the root type.
+    check(sniff("{\"note\":{\"type\":\"Point\"},\"name\":1}") == nil, "nested type was accepted")
+    check(sniff("{\"note\":\"\\\"type\\\": \\\"Point\\\"\"}") == nil, "type inside a string was accepted")
+    check(sniff("{\"features\":[{\"type\":\"Point\"}]}") == nil, "feature type was treated as the root")
+
+    // The prefix ends before the root type. Do not guess.
+    let cut = Data("{\"features\":[1,2,3,4".utf8)
+    check(GeoJSONSniff.rootType(in: cut) == nil, "truncated prefix was treated as GeoJSON")
+    let late = "{\"name\":\"" + String(repeating: "a", count: 100) + "\",\"type\":\"Point\"}"
+    check(GeoJSONSniff.rootType(in: Data(late.prefix(40).utf8)) == nil,
+          "type past the prefix was accepted")
+    check(GeoJSONSniff.rootType(in: Data(late.utf8)) == "Point",
+          "type after a long string key was missed")
+}
+
+func checkThumbnailLayout() {
+    // 256pt @2x is a 512px bitmap. The draw rect stays 256pt (the full canvas).
+    // Dividing by scale, or drawing 256px into that buffer, is the quadrant bug.
+    let full = ThumbnailLayout.iconRect(width: 256, height: 256)
+    check(full.x == 0 && full.y == 0 && full.side == 256,
+          "256pt icon rect \(full) does not fill the point canvas")
+    check(ThumbnailLayout.bitmapEdge(points: full.side, scale: 2) == 512,
+          "256pt @2x does not cover a 512px bitmap")
+
+    for points in [16.0, 64.0, 256.0, 512.0] {
+        for scale in [1.0, 2.0, 3.0] {
+            let rect = ThumbnailLayout.iconRect(width: points, height: points)
+            let pixels = ThumbnailLayout.bitmapEdge(points: rect.side, scale: scale)
+            let bitmap = ThumbnailLayout.bitmapEdge(points: points, scale: scale)
+            check(rect.x == 0 && rect.y == 0 && rect.side == points && pixels == bitmap,
+                  "\(points)pt @\(scale)x rect \(rect) covers \(pixels) of \(bitmap)")
+        }
+    }
+
+    let wide = ThumbnailLayout.iconRect(width: 512, height: 256)
+    check(wide.side == 256 && wide.x == 128 && wide.y == 0, "wide canvas rect \(wide)")
+    let tall = ThumbnailLayout.iconRect(width: 16, height: 64)
+    check(tall.side == 16 && tall.x == 0 && tall.y == 24, "tall canvas rect \(tall)")
+    let empty = ThumbnailLayout.iconRect(width: 0, height: 256)
+    check(empty.side == 0, "zero canvas produced a rect")
+}
+
 let plain = try loadFixture("plain-object.json")
 let plainHTML = makeJSONFallbackHTML(fileName: "plain-object.json", data: plain)
 assertSafeMarkup(plainHTML, "plain-object.json")
@@ -642,9 +718,14 @@ assertSafeMarkup(prettyHTML, "pretty truncation")
 check(prettyHTML.contains("Showing the first"), "pretty-printed JSON over the cap was not truncated")
 check(!prettyHTML.contains("Not valid JSON"), "truncated pretty JSON was called invalid")
 
+try checkThumbnailSniff()
+checkThumbnailLayout()
+
 if failures == 0 {
     print("ok: \(breakouts.count) payloads, fixture, user script, esc(), navigation policy")
     print("ok: JSON fallback (hostile object, fragment, 9 GeoJSON types, plain-object.json, array.json, invalid.json, point.json, truncation)")
+    print("ok: thumbnail sniff (root type only, prefix cap, nested type ignored)")
+    print("ok: thumbnail layout (square fill, aspect-fit, 1x/2x/3x bitmap coverage)")
 } else {
     fputs("\(failures) failure(s)\n", stderr)
     exit(1)
