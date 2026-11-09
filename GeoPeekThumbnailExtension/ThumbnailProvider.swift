@@ -10,17 +10,22 @@
 import CoreGraphics
 import Foundation
 import ImageIO
+import os
 import QuickLookThumbnailing
+
+private let thumbnailLog = Logger(subsystem: "dev.serifsadi.GeoPeek.GeoPeekThumbnailExtension",
+                                  category: "thumbnail")
 
 private enum ThumbnailError: Error {
     case notGeoJSON
 }
 
-final class ThumbnailProvider: QLThumbnailProvider {
+class ThumbnailProvider: QLThumbnailProvider {
 
     override func provideThumbnail(for request: QLFileThumbnailRequest,
                                    _ handler: @escaping (QLThumbnailReply?, Error?) -> Void) {
         let ext = request.fileURL.pathExtension.lowercased()
+        thumbnailLog.log("provideThumbnail ext=\(ext, privacy: .public) size=\(request.maximumSize.width, privacy: .public)x\(request.maximumSize.height, privacy: .public)")
         if ext == "geojson" {
             handler(Self.iconReply(for: request), nil)
             return
