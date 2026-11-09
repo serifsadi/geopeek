@@ -1,0 +1,48 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "</script><script>alert(1)</script>": "property-key-breakout",
+        "quote\"key\\": "value with \"quotes\" and \\ backslashes </script>",
+        "line\u2028sep": "value\u2028and\u2029</ScRiPt><img src=x onerror=alert(1)>"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [10, 20]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "note": "</script><script>alert(1)</script>"
+      },
+      "geometry": {
+        "type": "</script><script>alert(1)</script>",
+        "coordinates": [11, 21]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {},
+      "geometry": {
+        "type": "GeometryCollection",
+        "geometries": [
+          {
+            "type": "LineString",
+            "coordinates": [[10, 20], [12, 22]]
+          },
+          {
+            "type": "foo\";alert(1);//",
+            "coordinates": [0, 0]
+          },
+          {
+            "type": "Poly\u2028gon",
+            "coordinates": []
+          }
+        ]
+      }
+    }
+  ]
+}

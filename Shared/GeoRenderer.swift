@@ -8,6 +8,12 @@
 //
 
 import Foundation
+#if canImport(WebKit)
+import WebKit
+#endif
+#if canImport(AppKit)
+import AppKit
+#endif
 
 // MARK: - Data model
 
@@ -27,13 +33,18 @@ struct GeoJSONMeta {
 
 // MARK: - Parsing
 
-private let _validGeoJSONTypes: Set<String> = [
-    "FeatureCollection", "Feature",
+/// RFC 7946 §1.4. A geometry `type` is file-controlled text; only these seven
+/// strings are ever copied into the page. Anything else is ignored.
+private let _geometryTypes: Set<String> = [
     "Point", "MultiPoint",
     "LineString", "MultiLineString",
     "Polygon", "MultiPolygon",
     "GeometryCollection"
 ]
+
+private let _validGeoJSONTypes: Set<String> = _geometryTypes.union([
+    "FeatureCollection", "Feature"
+])
 
 /// Parses `data` as GeoJSON.  Returns `nil` when the data is not valid GeoJSON.
 /// Thread-safe — uses only local state.
@@ -61,7 +72,8 @@ func parseGeoJSON(_ data: Data) -> GeoJSONMeta? {
     }
 
     func walkGeometry(_ geom: [String: Any]) {
-        guard let gType = geom["type"] as? String else { return }
+        guard let gType = geom["type"] as? String,
+              _geometryTypes.contains(gType) else { return }
         if gType == "GeometryCollection" {
             (geom["geometries"] as? [[String: Any]])?.forEach { walkGeometry($0) }
         } else {
@@ -83,11 +95,164 @@ func parseGeoJSON(_ data: Data) -> GeoJSONMeta? {
         walkGeometry(root)
     }
 
-    meta.geometryTypes = Array(geomTypes)
+    meta.geometryTypes = geomTypes.sorted()
     if minLng.isFinite { meta.bounds = GeoBounds(minLng: minLng, maxLng: maxLng,
                                                  minLat: minLat, maxLat: maxLat) }
     return meta
 }
+
+// MARK: - Embedding file data in the page
+
+/// JSON text safe to place inside `<script>` or a `WKUserScript`.
+/// `JSONSerialization` quotes and escapes the value; `<`, `>`, `&`, and the
+/// JS line separators U+2028/U+2029 are then rewritten as `\uXXXX` so the
+/// HTML parser cannot close the script element and the JS parser cannot
+/// treat a string as two lines. The decoded value is unchanged.
+func scriptSafeJSONObject(_ object: Any) -> String {
+    guard JSONSerialization.isValidJSONObject(object),
+          let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
+          let json = String(data: data, encoding: .utf8) else {
+        return #"{"bounds":null,"featureCount":0,"geometryTypes":[],"vertexCount":0}"#
+    }
+    return escapeForInlineScript(json)
+}
+
+/// A JSON string literal, including the surrounding quotes.
+func scriptSafeJSONString(_ value: String) -> String {
+    guard let data = try? JSONSerialization.data(withJSONObject: [value]),
+          let json = String(data: data, encoding: .utf8),
+          json.first == "[", json.last == "]" else {
+        return "\"\""
+    }
+    // JSONSerialization emits `[` + literal + `]` with no extra whitespace.
+    let literal = String(json.dropFirst().dropLast())
+    return escapeForInlineScript(literal)
+}
+
+/// Statement injected at document start. The file bytes stay inside one
+/// JSON string; they are not interpolated into the HTML template.
+func geoJSONInjectionScript(base64: String) -> String {
+    "window.__GEO__=\(scriptSafeJSONString(base64));"
+}
+
+private func escapeForInlineScript(_ json: String) -> String {
+    json
+        .replacingOccurrences(of: "&", with: "\\u0026")
+        .replacingOccurrences(of: "<", with: "\\u003c")
+        .replacingOccurrences(of: ">", with: "\\u003e")
+        .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+        .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
+}
+
+private func mapMetaObject(_ meta: GeoJSONMeta) -> [String: Any] {
+    let bounds: Any
+    if let b = meta.bounds {
+        bounds = [[b.minLng, b.minLat], [b.maxLng, b.maxLat]]
+    } else {
+        bounds = NSNull()
+    }
+    return [
+        "featureCount": meta.featureCount,
+        "vertexCount": meta.vertexCount,
+        "geometryTypes": meta.geometryTypes,
+        "bounds": bounds
+    ]
+}
+
+// MARK: - Navigation policy
+
+/// How the web view is trying to navigate. Mapped from `WKNavigationType`
+/// by the app and the Quick Look extension.
+enum MapNavigationKind: Equatable {
+    /// `loadHTMLString` (`.other`).
+    case documentLoad
+    /// A clicked `<a href>` (`.linkActivated`), including `target="_blank"`.
+    case linkActivated
+    /// Form submits, back/forward, reloads, and anything added later.
+    case other
+}
+
+enum MapNavigationDecision: Equatable {
+    case allow
+    /// Cancel the web view navigation and open this URL in the system browser.
+    case openExternally(URL)
+    case cancel
+}
+
+/// Allows only the document produced by `loadHTMLString`, and sends http(s)
+/// link clicks (map attribution, MapLibre logo) to the system browser.
+///
+/// `documentBaseURL` is the base URL passed to `loadHTMLString`. `nil` means
+/// that call used `about:blank` (the error page, and the web view's initial
+/// empty document). WebKit's request URL for `loadData` is that base URL.
+func decideMapNavigation(kind: MapNavigationKind,
+                         url: URL?,
+                         isMainFrame: Bool,
+                         documentBaseURL: URL?) -> MapNavigationDecision {
+    switch kind {
+    case .linkActivated:
+        if let url, isBrowserURL(url) {
+            return .openExternally(url)
+        }
+        return .cancel
+    case .documentLoad:
+        guard isMainFrame, let url else { return .cancel }
+        let expected = documentBaseURL ?? URL(string: "about:blank")!
+        guard let actualKey = canonicalDocumentURL(url),
+              let expectedKey = canonicalDocumentURL(expected),
+              actualKey == expectedKey else { return .cancel }
+        return .allow
+    case .other:
+        return .cancel
+    }
+}
+
+private func isBrowserURL(_ url: URL) -> Bool {
+    guard let scheme = url.scheme?.lowercased(),
+          scheme == "http" || scheme == "https",
+          let host = url.host, !host.isEmpty else { return false }
+    return true
+}
+
+/// Scheme + host + path, with an empty path and `/` treated as the same
+/// document. Query strings and fragments never match, so they cannot widen
+/// the allowed document. Returns nil for `about:` URLs other than `about:blank`.
+private func canonicalDocumentURL(_ url: URL) -> String? {
+    guard let scheme = url.scheme?.lowercased(), !scheme.isEmpty else { return nil }
+    if url.query != nil || url.fragment != nil { return nil }
+    if scheme == "about" {
+        let body = url.absoluteString.split(separator: ":", maxSplits: 1).last
+            .map(String.init)?.lowercased() ?? ""
+        return body == "blank" ? "about:blank" : nil
+    }
+    let host = (url.host ?? "").lowercased()
+    let path = url.path.isEmpty ? "/" : url.path
+    let trimmed = (path.count > 1 && path.hasSuffix("/")) ? String(path.dropLast()) : path
+    return "\(scheme)://\(host)\(trimmed)"
+}
+
+#if canImport(WebKit)
+func mapNavigationKind(_ type: WKNavigationType) -> MapNavigationKind {
+    switch type {
+    case .linkActivated:
+        return .linkActivated
+    case .other:
+        return .documentLoad
+    case .formSubmitted, .backForward, .reload, .formResubmitted:
+        return .other
+    @unknown default:
+        return .other
+    }
+}
+#endif
+
+#if canImport(WebKit) && canImport(AppKit)
+/// Opens an attribution (or other http(s)) link outside the map web view.
+@MainActor
+func openMapLinkInBrowser(_ url: URL) {
+    NSWorkspace.shared.open(url)
+}
+#endif
 
 // MARK: - HTML generation
 
@@ -157,11 +322,9 @@ func makeErrorHTML() -> String {
 ///   — a registered `WKURLSchemeHandler` ("geopeek") serves `maplibre-gl.js/.css`
 ///   from the app bundle, bypassing WKWebView's `file://` sandbox restrictions.
 func makeMapHTML(meta: GeoJSONMeta) -> String {
-    let boundsJS: String = {
-        guard let b = meta.bounds else { return "null" }
-        return "[[\(b.minLng),\(b.minLat)],[\(b.maxLng),\(b.maxLat)]]"
-    }()
-    let typesJS = "[" + meta.geometryTypes.map { "\"\($0)\"" }.joined(separator: ",") + "]"
+    // Counts, bounds, and geometry type names cross into JS as one JSON
+    // value. No file-derived string is interpolated into the template.
+    let metaJSON = scriptSafeJSONObject(mapMetaObject(meta))
 
     return """
     <!DOCTYPE html>
@@ -439,12 +602,7 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
       </div>
       <script src="maplibre-gl.js"></script>
       <script>
-        var META = {
-          featureCount:  \(meta.featureCount),
-          vertexCount:   \(meta.vertexCount),
-          geometryTypes: \(typesJS),
-          bounds:        \(boundsJS)
-        };
+        var META = \(metaJSON);
 
         var typeLabels = {
           'Point':'Point',             'MultiPoint':'Multi\\u00b7Point',
@@ -459,7 +617,7 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
         document.getElementById('stats').innerHTML =
           '<div class="stats-count">'  + META.featureCount.toLocaleString() +
           '&#x2009;feature' + (META.featureCount !== 1 ? 's' : '') + '</div>' +
-          (typeNames ? '<div class="stats-types">' + typeNames + '</div>' : '') +
+          (typeNames ? '<div class="stats-types">' + esc(typeNames) + '</div>' : '') +
           (META.vertexCount > 0 ? '<div class="stats-vertices">' +
             META.vertexCount.toLocaleString() + '&#x2009;vertices</div>' : '');
 
@@ -535,7 +693,9 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
         }
 
         function esc(s) {
-          return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          return String(s)
+            .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
         }
 
         var activePopup = null;

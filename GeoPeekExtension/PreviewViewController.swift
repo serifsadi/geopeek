@@ -11,10 +11,13 @@ import WebKit
 
 // MARK: - View controller
 
-class PreviewViewController: NSViewController, QLPreviewingController, WKScriptMessageHandler {
+class PreviewViewController: NSViewController, QLPreviewingController, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
 
     private var webView: WKWebView!
     private var spinner: NSProgressIndicator!
+    /// Base URL of the document most recently passed to `loadHTMLString`.
+    /// `nil` allows only `about:blank` (parse errors, and the initial empty page).
+    private var documentBaseURL: URL?
 
     override func loadView() {
         let config = WKWebViewConfiguration()
@@ -22,6 +25,8 @@ class PreviewViewController: NSViewController, QLPreviewingController, WKScriptM
         config.userContentController.add(self, name: "mapReady")
 
         webView = WKWebView(frame: .zero, configuration: config)
+        webView.navigationDelegate = self
+        webView.uiDelegate = self
         webView.setValue(false, forKey: "drawsBackground")
         webView.translatesAutoresizingMaskIntoConstraints = false
 
@@ -67,10 +72,11 @@ class PreviewViewController: NSViewController, QLPreviewingController, WKScriptM
 
         await MainActor.run {
             if let p = result {
+                self.documentBaseURL = baseURL
                 let ucc = self.webView.configuration.userContentController
                 ucc.removeAllUserScripts()
                 ucc.addUserScript(WKUserScript(
-                    source: "window.__GEO__='\(p.base64)';",
+                    source: geoJSONInjectionScript(base64: p.base64),
                     injectionTime: .atDocumentStart,
                     forMainFrameOnly: true
                 ))
@@ -78,6 +84,7 @@ class PreviewViewController: NSViewController, QLPreviewingController, WKScriptM
                 self.spinner.startAnimation(nil)
                 self.webView.loadHTMLString(makeMapHTML(meta: p.meta), baseURL: baseURL)
             } else {
+                self.documentBaseURL = nil
                 self.spinner.isHidden = true
                 self.webView.loadHTMLString(makeErrorHTML(), baseURL: nil)
             }
@@ -91,5 +98,43 @@ class PreviewViewController: NSViewController, QLPreviewingController, WKScriptM
         guard message.name == "mapReady" else { return }
         spinner.stopAnimation(nil)
         spinner.isHidden = true
+    }
+
+    func webView(_ webView: WKWebView,
+                 decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        let decision = decideMapNavigation(
+            kind: mapNavigationKind(navigationAction.navigationType),
+            url: navigationAction.request.url,
+            isMainFrame: navigationAction.targetFrame?.isMainFrame ?? true,
+            documentBaseURL: documentBaseURL
+        )
+        switch decision {
+        case .allow:
+            decisionHandler(.allow)
+        case .openExternally(let url):
+            decisionHandler(.cancel)
+            openMapLinkInBrowser(url)
+        case .cancel:
+            decisionHandler(.cancel)
+        }
+    }
+
+    func webView(_ webView: WKWebView,
+                 createWebViewWith configuration: WKWebViewConfiguration,
+                 for navigationAction: WKNavigationAction,
+                 windowFeatures: WKWindowFeatures) -> WKWebView? {
+        // MapLibre's logo link uses target="_blank", which asks for a new
+        // web view instead of navigating this one. Open it outside.
+        if let url = navigationAction.request.url,
+           case .openExternally(let external) = decideMapNavigation(
+                kind: .linkActivated,
+                url: url,
+                isMainFrame: false,
+                documentBaseURL: documentBaseURL
+           ) {
+            openMapLinkInBrowser(external)
+        }
+        return nil
     }
 }
