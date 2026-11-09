@@ -40,6 +40,12 @@
 
 ## Installation
 
+### Homebrew
+
+```bash
+brew install --cask serifsadi/geopeek/geopeek
+```
+
 ### From GitHub Releases
 
 Download the latest `.dmg` from [Releases](https://github.com/serifsadi/geopeek/releases).
