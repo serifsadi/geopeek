@@ -43,7 +43,7 @@
 ### Homebrew
 
 ```bash
-brew install --cask serifsadi/tap/geopeek
+brew install --cask serifsadi/geopeek/geopeek
 ```
 
 ### From GitHub Releases
