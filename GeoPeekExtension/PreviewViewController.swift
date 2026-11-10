@@ -85,7 +85,7 @@ class PreviewViewController: NSViewController, QLPreviewingController, WKScriptM
                 self.spinner.isHidden = false
                 self.spinner.startAnimation(nil)
                 self.webView.loadHTMLString(html, baseURL: baseURL)
-            case .fallback(let html):
+            case .fallback(let html), .invalid(let html):
                 self.documentBaseURL = nil
                 self.spinner.stopAnimation(nil)
                 self.spinner.isHidden = true

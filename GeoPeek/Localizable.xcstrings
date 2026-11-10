@@ -13,36 +13,24 @@
     "Close file" : {
 
     },
-    "Drop a GeoJSON, KML, KMZ, or GPX file" : {
+    "Drop a file here" : {
       "comment" : "Instruction text inside the drag-and-drop zone",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Drop a GeoJSON, KML, KMZ, or GPX file"
+            "value" : "Drop a file here"
           }
         }
       }
     },
-    "Fit to data" : {
-      "comment" : "Tooltip / aria-label for the fit-to-bounds map button",
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fit to data"
-          }
-        }
-      }
-    },
-    "GeoJSON, KML, KMZ & GPX" : {
+    "Geospatial Quick Look & Viewer" : {
       "comment" : "Subtitle shown below the app name on the welcome screen",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "GeoJSON, KML, KMZ & GPX"
+            "value" : "Geospatial Quick Look & Viewer"
           }
         }
       }
@@ -87,20 +75,8 @@
     "Show in Finder" : {
 
     },
-    "You can also press **Space** on a `.geojson`, `.json`, `.kml`, `.kmz`, or `.gpx` file in Finder to preview it." : {
+    "You can also press **Space** on a GeoJSON, KML, KMZ, or GPX file in Finder to preview it." : {
 
-    },
-    "You can also press %@ on any %@ file in Finder to preview it." : {
-      "comment" : "Hint below Open button. %1$@ = Space (key), %2$@ = .geojson (extension)",
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "You can also press %1$@ on any %2$@ file in Finder to preview it."
-          }
-        }
-      }
     }
   },
   "version" : "1.0"

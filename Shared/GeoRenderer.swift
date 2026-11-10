@@ -384,6 +384,8 @@ enum RenderedPreview {
     case map(html: String, userScript: String)
     /// Read-only JSON or raw text. No script, no file-controlled URLs.
     case fallback(html: String)
+    /// The Not Valid page. An empty or malformed file did not open.
+    case invalid(html: String)
 }
 
 /// Map when `data` is GeoJSON; otherwise the read-only fallback. The decision
@@ -413,7 +415,7 @@ func renderFilePreview(data: Data,
                        maxFallbackBytes: Int = jsonFallbackMaxBytes) -> RenderedPreview {
     if let kind = GeoImportKind(fileName: fileName) {
         guard let geoJSON = geoJSONData(from: data, kind: kind) else {
-            return .fallback(html: makeErrorHTML(format: kind.displayName))
+            return .invalid(html: makeErrorHTML(format: kind.displayName))
         }
         return renderPreview(data: geoJSON, fileName: fileName, maxFallbackBytes: maxFallbackBytes)
     }

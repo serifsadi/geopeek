@@ -52,7 +52,6 @@ struct ContentView: View {
             _ = provider.loadObject(ofClass: NSURL.self) { (nsurl, _) in
                 guard let url = nsurl as? URL, isSupportedDocument(url) else { return }
                 DispatchQueue.main.async {
-                    RecentFiles.shared.note(url)
                     fileURL = url
                 }
             }
@@ -82,7 +81,6 @@ func openDocument(into fileURL: Binding<URL?>) {
     panel.allowedContentTypes      = supportedContentTypes()
     panel.prompt = "Open"
     if panel.runModal() == .OK, let url = panel.url {
-        RecentFiles.shared.note(url)
         fileURL.wrappedValue = url
     }
 }
@@ -169,7 +167,7 @@ struct WelcomeView: View {
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(.primary)
 
-                Text("GeoJSON, KML, KMZ & GPX")
+                Text("Geospatial Quick Look & Viewer")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -199,7 +197,7 @@ struct WelcomeView: View {
 
             Spacer().frame(height: 16)
 
-            Text("You can also press **Space** on a `.geojson`, `.json`, `.kml`, `.kmz`, or `.gpx` file in Finder to preview it.")
+            Text("You can also press **Space** on a GeoJSON, KML, KMZ, or GPX file in Finder to preview it.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
@@ -262,7 +260,7 @@ struct WelcomeView: View {
                     Image(systemName: "arrow.down.doc")
                         .font(.system(size: 22, weight: .light))
                         .foregroundStyle(isDragOver ? accent : .secondary)
-                    Text("Drop a GeoJSON, KML, KMZ, or GPX file")
+                    Text("Drop a file here")
                         .font(.callout)
                         .foregroundStyle(isDragOver ? Color.primary : Color.secondary)
                 }
@@ -492,7 +490,16 @@ struct MapView: NSViewRepresentable {
                     self.documentBaseURL = Coordinator.baseURL
                     let ucc = wv.configuration.userContentController
                     ucc.removeAllUserScripts()
-                    switch renderFilePreview(data: data, fileName: name) {
+                    let preview = renderFilePreview(data: data, fileName: name)
+                    // Finder, Open, drop, and Open Recent all arrive here.
+                    // The Not Valid page is not an open, so it is left out of Recents.
+                    switch preview {
+                    case .map, .fallback:
+                        RecentFiles.shared.note(url)
+                    case .invalid:
+                        break
+                    }
+                    switch preview {
                     case .map(let html, let userScript):
                         ucc.addUserScript(WKUserScript(
                             source: userScript,
@@ -500,7 +507,7 @@ struct MapView: NSViewRepresentable {
                             forMainFrameOnly: true
                         ))
                         wv.loadHTMLString(html, baseURL: Coordinator.baseURL)
-                    case .fallback(let html):
+                    case .fallback(let html), .invalid(let html):
                         wv.loadHTMLString(html, baseURL: Coordinator.baseURL)
                     }
                 }

@@ -65,7 +65,6 @@ extension FocusedValues {
 }
 
 func openRecent(_ url: URL, openWindow: OpenWindowAction) {
-    RecentFiles.shared.note(url)
     openWindow(value: url)
 }
 
@@ -89,7 +88,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         let files = urls.filter(isSupportedDocument)
-        files.forEach { RecentFiles.shared.note($0) }
         guard openWindow != nil else {
             queued.append(contentsOf: files)
             return

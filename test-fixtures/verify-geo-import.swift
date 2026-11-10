@@ -281,8 +281,8 @@ func checkEmptyAndMalformed() {
 }
 
 func checkNotValid(_ data: Data, _ fileName: String, _ format: String) {
-    guard case .fallback(let html) = renderFilePreview(data: data, fileName: fileName) else {
-        fail("\(fileName) rendered a map")
+    guard case .invalid(let html) = renderFilePreview(data: data, fileName: fileName) else {
+        fail("\(fileName) did not show the Not Valid page")
         return
     }
     check(html.contains("Not Valid \(format)"), "\(fileName) is missing Not Valid \(format)")
@@ -323,7 +323,7 @@ func checkRenderHandoff(kml: Data, gpx: Data, kmz: Data) throws {
             return
         }
         check(meta.featureCount == 11, "rendered KML featureCount \(meta.featureCount)")
-    case .fallback:
+    case .fallback, .invalid:
         fail("sample.kml used the fallback page")
     }
 
@@ -334,14 +334,14 @@ func checkRenderHandoff(kml: Data, gpx: Data, kmz: Data) throws {
             return
         }
         check(meta.featureCount == 11, "rendered KMZ featureCount \(meta.featureCount)")
-    case .fallback:
+    case .fallback, .invalid:
         fail("sample.KMZ used the fallback page")
     }
 
     switch renderFilePreview(data: gpx, fileName: "sample.gpx") {
     case .map:
         break
-    case .fallback:
+    case .fallback, .invalid:
         fail("sample.gpx used the fallback page")
     }
 
@@ -353,7 +353,7 @@ func checkRenderHandoff(kml: Data, gpx: Data, kmz: Data) throws {
     case .map(let html, let script):
         check(!html.contains("alert(1)"), "hostile KML description reached the map HTML")
         check(!script.contains("alert(1)") && !script.contains("<"), "hostile KML description broke the user script")
-    case .fallback:
+    case .fallback, .invalid:
         fail("hostile.kml did not render")
     }
 
@@ -363,7 +363,7 @@ func checkRenderHandoff(kml: Data, gpx: Data, kmz: Data) throws {
         check(html.contains("maplibregl"), "point.json no longer renders the map")
         check(!html.contains("Not Valid KML") && !html.contains("Not valid JSON"),
               "point.json was reported invalid")
-    case .fallback:
+    case .fallback, .invalid:
         fail("point.json used the fallback page")
     }
 
@@ -373,14 +373,14 @@ func checkRenderHandoff(kml: Data, gpx: Data, kmz: Data) throws {
         check(html.contains("Not valid JSON."), "invalid.json lost the JSON parse line")
         check(!html.contains("Not Valid KML") && !html.contains("Not Valid GeoJSON"),
               "invalid.json used the format error card")
-    case .map:
-        fail("invalid.json rendered a map")
+    case .map, .invalid:
+        fail("invalid.json rendered a map or the format error card")
     }
 
     switch renderFilePreview(data: point, fileName: "point.kml") {
-    case .fallback(let html):
+    case .invalid(let html):
         check(html.contains("Not Valid KML"), "GeoJSON bytes named .kml should fail as KML")
-    case .map:
+    case .map, .fallback:
         fail("point.kml was parsed as GeoJSON")
     }
 }
