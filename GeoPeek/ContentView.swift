@@ -12,12 +12,19 @@ import UniformTypeIdentifiers
 // MARK: - Root view
 
 struct ContentView: View {
-    @State private var loadedURL: URL?
+    /// File this window shows. The window group owns it, so each window keeps
+    /// and restores its own file.
+    @Binding var fileURL: URL?
     @State private var isDragOver = false
+    @State private var hostWindow: NSWindow?
+    @State private var windowID = UUID()
+
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
+        let _ = syncWindowSlot()
         ZStack {
-            if let url = loadedURL {
+            if let url = fileURL {
                 MapView(fileURL: url)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -33,10 +40,10 @@ struct ContentView: View {
         .toolbar {
             // Native macOS back button — only visible while a file is open.
             // QL/Preview has no toolbar, so this never appears there.
-            if loadedURL != nil {
+            if fileURL != nil {
                 ToolbarItem(placement: .navigation) {
                     Button {
-                        loadedURL = nil
+                        fileURL = nil
                     } label: {
                         Label("Back", systemImage: "chevron.left")
                     }
@@ -44,42 +51,83 @@ struct ContentView: View {
                 }
             }
         }
-        // Accept dropped .geojson / .json files
+        // Accept dropped .geojson / .json files. Drops stay in this window.
         .onDrop(of: [.fileURL], isTargeted: $isDragOver) { providers in
             guard let provider = providers.first else { return false }
             // NSURL (not URL) conforms to NSItemProviderReading on macOS
             _ = provider.loadObject(ofClass: NSURL.self) { (nsurl, _) in
-                guard let url = nsurl as? URL, isGeoJSON(url) else { return }
-                DispatchQueue.main.async { loadedURL = url }
+                guard let url = nsurl as? URL, GeoFileURL.isGeoJSON(url) else { return }
+                DispatchQueue.main.async { fileURL = url }
             }
             return true
         }
-        // ⌘O
-        .onReceive(NotificationCenter.default.publisher(for: .openGeoJSONFile)) { _ in
+        // ⌘O — only the window the command was sent to.
+        .onReceive(NotificationCenter.default.publisher(for: .openGeoJSONFile)) { note in
+            guard targetsThisWindow(note) else { return }
             openFilePicker()
         }
-        // File opened from Finder / QL "Open with GeoPeek"
-        .onReceive(NotificationCenter.default.publisher(for: .openFileURLs)) { note in
-            if let url = note.object as? URL, isGeoJSON(url) {
-                loadedURL = url
-            }
-        }
-        // ⌘V
-        .onReceive(NotificationCenter.default.publisher(for: .pasteGeoJSON)) { _ in
+        // ⌘V — only the window the command was sent to.
+        .onReceive(NotificationCenter.default.publisher(for: .pasteGeoJSON)) { note in
+            guard targetsThisWindow(note) else { return }
             pasteFromClipboard()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .suppressAutomaticEmptyWindow)) { _ in
+            closeAutomaticEmptyWindowIfNeeded()
+        }
+        .onAppear { closeAutomaticEmptyWindowIfNeeded() }
+        .onDisappear { OpenWindows.shared.remove(id: windowID) }
+        .background(HostWindowReader(window: $hostWindow))
     }
 
     // MARK: - Helpers
 
     private var windowTitle: String {
-        guard let url = loadedURL else { return "GeoPeek" }
+        guard let url = fileURL else { return "GeoPeek" }
         let name = url.lastPathComponent
         if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize {
             let formatted = ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)
             return "GeoPeek  —  \(name)  (\(formatted))"
         }
         return "GeoPeek  —  \(name)"
+    }
+
+    private func syncWindowSlot() {
+        let binding = $fileURL
+        OpenWindows.shared.update(
+            id: windowID,
+            url: fileURL.map(GeoFileURL.canonical),
+            window: hostWindow
+        ) { url in
+            binding.wrappedValue = url
+        }
+    }
+
+    private func targetsThisWindow(_ note: Notification) -> Bool {
+        guard let target = note.object as? NSWindow else { return false }
+        return target === hostWindow
+    }
+
+    /// Launch Services opens a file by creating a window. The extra blank
+    /// window SwiftUI makes at launch is not one the user opened.
+    private func closeAutomaticEmptyWindowIfNeeded() {
+        guard fileURL == nil, OpenWindows.shared.shouldCloseEmptyLaunchWindow else { return }
+        DispatchQueue.main.async {
+            self.finishClosingAutomaticEmptyWindow(allowRetry: true)
+        }
+    }
+
+    private func finishClosingAutomaticEmptyWindow(allowRetry: Bool) {
+        guard fileURL == nil, OpenWindows.shared.shouldCloseEmptyLaunchWindow else { return }
+        // Wait until the file window exists so this does not dismiss it,
+        // and so the app is not left with no windows.
+        guard OpenWindows.shared.containsFile else {
+            if allowRetry {
+                DispatchQueue.main.async { self.finishClosingAutomaticEmptyWindow(allowRetry: false) }
+            }
+            return
+        }
+        guard OpenWindows.shared.consumeEmptyLaunchDismissal() else { return }
+        dismiss()
     }
 
     private func openFilePicker() {
@@ -93,13 +141,8 @@ struct ContentView: View {
         ]
         panel.prompt = "Open"
         if panel.runModal() == .OK, let url = panel.url {
-            loadedURL = url
+            fileURL = url
         }
-    }
-
-    private func isGeoJSON(_ url: URL) -> Bool {
-        let ext = url.pathExtension.lowercased()
-        return ext == "geojson" || ext == "json"
     }
 
     private func pasteFromClipboard() {
@@ -113,12 +156,15 @@ struct ContentView: View {
             return
         }
         // Same viewer as Open. GeoJSON maps; other text uses the JSON fallback.
+        // A unique directory keeps two pasted windows from sharing one URL.
         let name = parseGeoJSON(data) != nil ? "Pasted.geojson" : "Pasted.json"
-        let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent(name)
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("GeoPeek-\(UUID().uuidString)", isDirectory: true)
+        let tempURL = directory.appendingPathComponent(name)
         do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try data.write(to: tempURL, options: .atomic)
-            loadedURL = tempURL
+            fileURL = GeoFileURL.canonical(tempURL)
         } catch {
             showPasteError("Could not process clipboard data.")
         }
@@ -387,8 +433,51 @@ struct MapView: NSViewRepresentable {
     }
 }
 
+// MARK: - Key window for ⌘O / ⌘V
+
+/// The menu posts to `NSApp.keyWindow`. This view reports the window that
+/// hosts it so a command is not applied to every open viewer.
+private struct HostWindowReader: NSViewRepresentable {
+    @Binding var window: NSWindow?
+
+    func makeCoordinator() -> Coordinator { Coordinator(window: $window) }
+
+    func makeNSView(context: Context) -> WindowPeekView {
+        let view = WindowPeekView()
+        view.onWindow = context.coordinator.set
+        return view
+    }
+
+    func updateNSView(_ nsView: WindowPeekView, context: Context) {
+        nsView.onWindow = context.coordinator.set
+        context.coordinator.set(nsView.window)
+    }
+
+    final class Coordinator {
+        var window: Binding<NSWindow?>
+        init(window: Binding<NSWindow?>) { self.window = window }
+
+        func set(_ newWindow: NSWindow?) {
+            guard window.wrappedValue !== newWindow else { return }
+            DispatchQueue.main.async {
+                guard self.window.wrappedValue !== newWindow else { return }
+                self.window.wrappedValue = newWindow
+            }
+        }
+    }
+}
+
+private final class WindowPeekView: NSView {
+    var onWindow: ((NSWindow?) -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        onWindow?(window)
+    }
+}
+
 // MARK: - Preview
 
 #Preview {
-    ContentView()
+    ContentView(fileURL: .constant(nil))
 }
