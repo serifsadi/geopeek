@@ -13,6 +13,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Binding var fileURL: URL?
+    @Environment(\.openWindow) private var openWindow
     @State private var isDragOver = false
 
     var body: some View {
@@ -45,15 +46,21 @@ struct ContentView: View {
                 }
             }
         }
-        // Accept dropped .geojson / .json files
+        // The map's web view does not take file drops, so this receives them.
+        // The welcome window loads the file here. A map opens it in its own window.
         .onDrop(of: [.fileURL], isTargeted: $isDragOver) { providers in
             guard let provider = providers.first else { return false }
+            let openInNewWindow = fileURL != nil
             // NSURL (not URL) conforms to NSItemProviderReading on macOS
             _ = provider.loadObject(ofClass: NSURL.self) { (nsurl, _) in
                 guard let url = nsurl as? URL, isGeoJSONFile(url) else { return }
                 DispatchQueue.main.async {
                     RecentFiles.shared.note(url)
-                    fileURL = url
+                    if openInNewWindow {
+                        openWindow(value: url)
+                    } else {
+                        fileURL = url
+                    }
                 }
             }
             return true
@@ -306,11 +313,60 @@ private final class MapLibreSchemeHandler: NSObject, WKURLSchemeHandler {
 
 // MARK: - Map NSViewRepresentable
 
+/// The web view's private content view accepts file drops. This overlay is hit
+/// only while a file drag is active, refuses the drop, and lets it reach SwiftUI.
+private final class FileDropOverlay: NSView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard bounds.contains(point),
+              NSPasteboard(name: .drag).types?.contains(.fileURL) == true else { return nil }
+        return self
+    }
+
+    // Refuse the drop so AppKit offers it to the SwiftUI drop destination.
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { [] }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { [] }
+}
+
+private final class MapRootView: NSView {
+    let webView: WKWebView
+    private let dropOverlay = FileDropOverlay(frame: .zero)
+
+    init(configuration: WKWebViewConfiguration) {
+        webView = WKWebView(frame: .zero, configuration: configuration)
+        super.init(frame: .zero)
+        addSubview(webView)
+        addSubview(dropOverlay)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func layout() {
+        super.layout()
+        webView.frame = bounds
+        dropOverlay.frame = bounds
+        passFileDropsThrough(webView)
+    }
+
+    private func passFileDropsThrough(_ view: NSView) {
+        if let types = view.registeredDraggedTypes, types.contains(.fileURL) {
+            view.registerForDraggedTypes(types.filter { $0 != .fileURL })
+        }
+        view.subviews.forEach(passFileDropsThrough)
+    }
+}
+
 struct MapView: NSViewRepresentable {
     let fileURL: URL
     var onInaccessible: () -> Void
 
-    func makeNSView(context: Context) -> WKWebView {
+    func makeNSView(context: Context) -> MapRootView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent()
         // Serve maplibre-gl.js/.css from the app bundle via a custom scheme so
@@ -320,25 +376,25 @@ struct MapView: NSViewRepresentable {
         config.userContentController.add(context.coordinator, name: "mapReady")
         config.userContentController.add(context.coordinator, name: "basemap")
 
-        let wv = WKWebView(frame: .zero, configuration: config)
-        wv.navigationDelegate = context.coordinator
-        wv.uiDelegate = context.coordinator
+        let root = MapRootView(configuration: config)
+        root.webView.navigationDelegate = context.coordinator
+        root.webView.uiDelegate = context.coordinator
         // Explicit background prevents white flash before the map renders.
-        wv.wantsLayer = true
+        root.webView.wantsLayer = true
         let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        wv.layer?.backgroundColor = CGColor(
+        root.webView.layer?.backgroundColor = CGColor(
             red: isDark ? 0.11 : 0.95,
             green: isDark ? 0.11 : 0.95,
             blue: isDark ? 0.12 : 0.97,
             alpha: 1.0
         )
-        return wv
+        return root
     }
 
-    func updateNSView(_ wv: WKWebView, context: Context) {
+    func updateNSView(_ root: MapRootView, context: Context) {
         guard context.coordinator.currentURL != fileURL else { return }
         context.coordinator.currentURL = fileURL
-        context.coordinator.load(into: wv, url: fileURL, onInaccessible: onInaccessible)
+        context.coordinator.load(into: root.webView, url: fileURL, onInaccessible: onInaccessible)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
