@@ -32,11 +32,6 @@ struct ContentView: View {
         .navigationTitle(windowTitle)
         .focusedSceneValue(\.openGeoJSON, { openFilePicker() })
         .focusedSceneValue(\.pasteGeoJSON, { pasteFromClipboard() })
-        .handlesExternalEvents(preferring: fileURL.map { Set([$0.absoluteString]) } ?? [], allowing: [])
-        .onOpenURL { url in
-            guard isGeoJSON(url) else { return }
-            fileURL = url
-        }
         .toolbar {
             // Native macOS back button — only visible while a file is open.
             // QL/Preview has no toolbar, so this never appears there.
