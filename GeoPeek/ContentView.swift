@@ -292,10 +292,12 @@ private struct RecentRow: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                         if let opened = RecentFiles.shared.openedAt(for: url) {
-                            Text(opened, format: Date.RelativeFormatStyle(presentation: .named))
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                                .lineLimit(1)
+                            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                                Text(opened, format: Date.RelativeFormatStyle(presentation: .named))
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                            }
                         }
                     }
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
