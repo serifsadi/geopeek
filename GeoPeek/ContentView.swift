@@ -67,9 +67,9 @@ struct ContentView: View {
         let name = url.lastPathComponent
         if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize {
             let formatted = ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)
-            return "GeoPeek | \(name) (\(formatted))"
+            return "GeoPeek · \(name) (\(formatted))"
         }
-        return "GeoPeek | \(name)"
+        return "GeoPeek · \(name)"
     }
 
 }
