@@ -277,7 +277,7 @@ private struct RecentRow: View {
     private var showsActions: Bool { hovering || focusedAction != nil }
 
     var body: some View {
-        ZStack(alignment: .trailing) {
+        HStack(spacing: 4) {
             Button(action: onOpen) {
                 HStack(spacing: 8) {
                     Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
@@ -300,25 +300,27 @@ private struct RecentRow: View {
                                 .lineLimit(1)
                         }
                     }
-                    Spacer(minLength: 0)
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 0) {
-                actionButton("xmark", action: .remove, help: "Remove from Recents") {
-                    RecentFiles.shared.remove(url)
+            if showsActions {
+                HStack(spacing: 0) {
+                    actionButton("xmark", action: .remove, help: "Remove from Recents") {
+                        RecentFiles.shared.remove(url)
+                    }
+                    actionButton("magnifyingglass", action: .reveal, help: "Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    }
                 }
-                actionButton("magnifyingglass", action: .reveal, help: "Show in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([url])
-                }
+                .fixedSize()
+                .layoutPriority(1)
             }
-            .padding(.trailing, 4)
-            .opacity(showsActions ? 1 : 0)
-            .allowsHitTesting(showsActions)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(
