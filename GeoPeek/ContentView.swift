@@ -12,31 +12,32 @@ import UniformTypeIdentifiers
 // MARK: - Root view
 
 struct ContentView: View {
-    @State private var loadedURL: URL?
+    @Binding var fileURL: URL?
     @State private var isDragOver = false
 
     var body: some View {
         ZStack {
-            if let url = loadedURL {
-                MapView(fileURL: url)
+            if let url = fileURL {
+                MapView(fileURL: url, onInaccessible: { fileURL = nil })
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 WelcomeView(isDragOver: $isDragOver, onOpen: {
-                    openFilePicker()
+                    openGeoJSONFile(into: $fileURL)
                 }, onPaste: {
-                    pasteFromClipboard()
+                    pasteGeoJSON(into: $fileURL)
                 })
             }
         }
         .frame(minWidth: 640, minHeight: 480)
         .navigationTitle(windowTitle)
+        .focusedSceneValue(\.fileURL, $fileURL)
         .toolbar {
             // Native macOS back button — only visible while a file is open.
             // QL/Preview has no toolbar, so this never appears there.
-            if loadedURL != nil {
+            if fileURL != nil {
                 ToolbarItem(placement: .navigation) {
                     Button {
-                        loadedURL = nil
+                        fileURL = nil
                     } label: {
                         Label("Back", systemImage: "chevron.left")
                     }
@@ -49,89 +50,82 @@ struct ContentView: View {
             guard let provider = providers.first else { return false }
             // NSURL (not URL) conforms to NSItemProviderReading on macOS
             _ = provider.loadObject(ofClass: NSURL.self) { (nsurl, _) in
-                guard let url = nsurl as? URL, isGeoJSON(url) else { return }
-                DispatchQueue.main.async { loadedURL = url }
+                guard let url = nsurl as? URL, isGeoJSONFile(url) else { return }
+                DispatchQueue.main.async {
+                    RecentFiles.shared.note(url)
+                    fileURL = url
+                }
             }
             return true
-        }
-        // ⌘O
-        .onReceive(NotificationCenter.default.publisher(for: .openGeoJSONFile)) { _ in
-            openFilePicker()
-        }
-        // File opened from Finder / QL "Open with GeoPeek"
-        .onReceive(NotificationCenter.default.publisher(for: .openFileURLs)) { note in
-            if let url = note.object as? URL, isGeoJSON(url) {
-                loadedURL = url
-            }
-        }
-        // ⌘V
-        .onReceive(NotificationCenter.default.publisher(for: .pasteGeoJSON)) { _ in
-            pasteFromClipboard()
         }
     }
 
     // MARK: - Helpers
 
     private var windowTitle: String {
-        guard let url = loadedURL else { return "GeoPeek" }
+        guard let url = fileURL else { return "GeoPeek" }
         let name = url.lastPathComponent
         if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize {
             let formatted = ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)
-            return "GeoPeek  —  \(name)  (\(formatted))"
+            return "GeoPeek · \(name) (\(formatted))"
         }
-        return "GeoPeek  —  \(name)"
+        return "GeoPeek · \(name)"
     }
 
-    private func openFilePicker() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles           = true
-        panel.canChooseDirectories     = false
-        panel.allowsMultipleSelection  = false
-        panel.allowedContentTypes      = [
-            UTType(filenameExtension: "geojson") ?? .json,
-            .json
-        ]
-        panel.prompt = "Open"
-        if panel.runModal() == .OK, let url = panel.url {
-            loadedURL = url
-        }
-    }
+}
 
-    private func isGeoJSON(_ url: URL) -> Bool {
-        let ext = url.pathExtension.lowercased()
-        return ext == "geojson" || ext == "json"
-    }
+func isGeoJSONFile(_ url: URL) -> Bool {
+    let ext = url.pathExtension.lowercased()
+    return ext == "geojson" || ext == "json"
+}
 
-    private func pasteFromClipboard() {
-        guard let string = NSPasteboard.general.string(forType: .string),
-              !string.isEmpty else {
-            showPasteError("The clipboard is empty or doesn't contain text.")
-            return
-        }
-        guard let data = string.data(using: .utf8) else {
-            showPasteError("Could not process clipboard data.")
-            return
-        }
-        // Same viewer as Open. GeoJSON maps; other text uses the JSON fallback.
-        let name = parseGeoJSON(data) != nil ? "Pasted.geojson" : "Pasted.json"
-        let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent(name)
-        do {
-            try data.write(to: tempURL, options: .atomic)
-            loadedURL = tempURL
-        } catch {
-            showPasteError("Could not process clipboard data.")
-        }
+func openGeoJSONFile(into fileURL: Binding<URL?>) {
+    let panel = NSOpenPanel()
+    panel.canChooseFiles           = true
+    panel.canChooseDirectories     = false
+    panel.allowsMultipleSelection  = false
+    panel.allowedContentTypes      = [
+        UTType(filenameExtension: "geojson") ?? .json,
+        .json
+    ]
+    panel.prompt = "Open"
+    if panel.runModal() == .OK, let url = panel.url {
+        RecentFiles.shared.note(url)
+        fileURL.wrappedValue = url
     }
+}
 
-    private func showPasteError(_ message: String) {
-        let alert = NSAlert()
-        alert.messageText = "Paste Failed"
-        alert.informativeText = message
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
+func pasteGeoJSON(into fileURL: Binding<URL?>) {
+    guard let string = NSPasteboard.general.string(forType: .string),
+          !string.isEmpty else {
+        showPasteError("The clipboard is empty or doesn't contain text.")
+        return
     }
+    guard let data = string.data(using: .utf8) else {
+        showPasteError("Could not process clipboard data.")
+        return
+    }
+    // A unique directory keeps two pastes from sharing one window.
+    let name = parseGeoJSON(data) != nil ? "Pasted.geojson" : "Pasted.json"
+    let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("GeoPeek-\(UUID().uuidString)", isDirectory: true)
+    let tempURL = directory.appendingPathComponent(name)
+    do {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try data.write(to: tempURL, options: .atomic)
+        fileURL.wrappedValue = tempURL
+    } catch {
+        showPasteError("Could not process clipboard data.")
+    }
+}
+
+private func showPasteError(_ message: String) {
+    let alert = NSAlert()
+    alert.messageText = "Paste Failed"
+    alert.informativeText = message
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "OK")
+    alert.runModal()
 }
 
 // MARK: - Welcome / drop zone
@@ -140,8 +134,23 @@ struct WelcomeView: View {
     @Binding var isDragOver: Bool
     let onOpen: () -> Void
     let onPaste: () -> Void
+    @Environment(\.openWindow) private var openWindow
+
+    private var recentItems: [URL] { Array(RecentFiles.shared.urls.prefix(8)) }
 
     var body: some View {
+        HStack(spacing: 0) {
+            if !recentItems.isEmpty {
+                recentColumn
+                Divider()
+            }
+            welcomeColumn
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .onAppear { RecentFiles.shared.refresh() }
+    }
+
+    private var welcomeColumn: some View {
         VStack(spacing: 0) {
             Spacer()
 
@@ -193,7 +202,41 @@ struct WelcomeView: View {
             Spacer()
         }
         .padding(40)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var recentColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Recent")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
+                .padding(.top, 16)
+                .padding(.bottom, 6)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(recentItems, id: \.absoluteString) { url in
+                        RecentRow(url: url) {
+                            openRecent(url, openWindow: openWindow)
+                        }
+                    }
+                }
+                .padding(.horizontal, 6)
+            }
+            Divider()
+            Button {
+                RecentFiles.shared.clear()
+            } label: {
+                Text("Clear Recents")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+        }
+        .frame(width: 280, alignment: .leading)
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     private var dropZone: some View {
@@ -219,6 +262,118 @@ struct WelcomeView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.15), value: isDragOver)
+    }
+}
+
+private struct RecentRow: View {
+    let url: URL
+    let onOpen: () -> Void
+
+    @State private var hovering = false
+    @State private var hoveredAction: Action?
+
+    private enum Action { case remove, reveal }
+
+    private static let relativeDate: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.dateTimeStyle = .named
+        formatter.unitsStyle = .full
+        return formatter
+    }()
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Button(action: onOpen) {
+                HStack(spacing: 8) {
+                    Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                        .resizable()
+                        .frame(width: 28, height: 28)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(url.lastPathComponent)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        subtitle
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        if let opened = RecentFiles.shared.openedAt(for: url) {
+                            TimelineView(.periodic(from: .now, by: 1)) { context in
+                                Text(Self.relativeDate.localizedString(for: opened, relativeTo: context.date))
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+
+            if hovering {
+                HStack(spacing: 2) {
+                    actionButton("xmark.circle.fill", action: .remove, help: "Remove from Recents") {
+                        RecentFiles.shared.remove(url)
+                    }
+                    actionButton("magnifyingglass.circle.fill", action: .reveal, help: "Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    }
+                }
+                .fixedSize()
+                .layoutPriority(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(hovering ? Color.primary.opacity(0.06) : Color.clear)
+        )
+        .onHover { inside in
+            hovering = inside
+            if !inside { hoveredAction = nil }
+        }
+    }
+
+    @ViewBuilder
+    private var subtitle: some View {
+        switch hoveredAction {
+        case .remove:
+            Text("Remove from Recents")
+        case .reveal:
+            Text("Show in Finder")
+        case nil:
+            Text(RecentFiles.shared.abbreviatedParentPath(for: url))
+        }
+    }
+
+    private func actionButton(
+        _ systemName: String,
+        action: Action,
+        help: LocalizedStringKey,
+        perform: @escaping () -> Void
+    ) -> some View {
+        Button(action: perform) {
+            Image(systemName: systemName)
+                .font(.system(size: 16))
+                .frame(width: 20, height: 20)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(hoveredAction == action ? .primary : .secondary)
+        .help(Text(help))
+        .accessibilityLabel(Text(help))
+        .onHover { inside in
+            if inside {
+                hoveredAction = action
+            } else if hoveredAction == action {
+                hoveredAction = nil
+            }
+        }
     }
 }
 
@@ -261,6 +416,7 @@ private final class MapLibreSchemeHandler: NSObject, WKURLSchemeHandler {
 
 struct MapView: NSViewRepresentable {
     let fileURL: URL
+    var onInaccessible: () -> Void
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -290,7 +446,7 @@ struct MapView: NSViewRepresentable {
     func updateNSView(_ wv: WKWebView, context: Context) {
         guard context.coordinator.currentURL != fileURL else { return }
         context.coordinator.currentURL = fileURL
-        context.coordinator.load(into: wv, url: fileURL)
+        context.coordinator.load(into: wv, url: fileURL, onInaccessible: onInaccessible)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -300,6 +456,7 @@ struct MapView: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
         var currentURL: URL?
+        var onInaccessible: () -> Void = {}
         /// Base URL of the document most recently passed to `loadHTMLString`.
         /// `nil` allows only `about:blank` (the web view's initial empty page).
         private var documentBaseURL: URL?
@@ -308,18 +465,24 @@ struct MapView: NSViewRepresentable {
         // "geopeek://r/maplibre-gl.js", which our scheme handler intercepts.
         private static let baseURL = URL(string: "geopeek://r/")!
 
-        func load(into wv: WKWebView, url: URL) {
+        func load(into wv: WKWebView, url: URL, onInaccessible: @escaping () -> Void) {
+            self.onInaccessible = onInaccessible
             let name = url.lastPathComponent
+            let candidates = RecentFiles.shared.accessCandidates(for: url)
             Task.detached(priority: .userInitiated) {
-                guard let data = try? Data(contentsOf: url) else {
-                    await MainActor.run {
-                        self.documentBaseURL = Coordinator.baseURL
-                        wv.configuration.userContentController.removeAllUserScripts()
-                        wv.loadHTMLString(makeErrorHTML(), baseURL: Coordinator.baseURL)
+                var data: Data?
+                for candidate in candidates {
+                    if let read = Self.contents(of: candidate) {
+                        data = read
+                        break
                     }
-                    return
                 }
+                let loaded = data
                 await MainActor.run {
+                    guard let data = loaded else {
+                        self.onInaccessible()
+                        return
+                    }
                     self.documentBaseURL = Coordinator.baseURL
                     let ucc = wv.configuration.userContentController
                     ucc.removeAllUserScripts()
@@ -336,6 +499,12 @@ struct MapView: NSViewRepresentable {
                     }
                 }
             }
+        }
+
+        private nonisolated static func contents(of url: URL) -> Data? {
+            let started = url.startAccessingSecurityScopedResource()
+            defer { if started { url.stopAccessingSecurityScopedResource() } }
+            return try? Data(contentsOf: url)
         }
 
         func userContentController(_ ucc: WKUserContentController,
@@ -390,5 +559,5 @@ struct MapView: NSViewRepresentable {
 // MARK: - Preview
 
 #Preview {
-    ContentView()
+    ContentView(fileURL: .constant(nil))
 }
