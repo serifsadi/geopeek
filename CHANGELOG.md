@@ -12,3 +12,25 @@
 - Release builds enable the hardened runtime and are signed with a Developer ID Application certificate. The release script notarizes the app and the disk image.
 - GeoPeek is back in Finder's Open With menu as a viewer for `.geojson`. The handler rank is Alternate, so it does not become the default app.
 - Upgrading from 0.1.x or 0.2.0 replaces an ad-hoc signature with a Developer ID signature. macOS shows the prompt that GeoPeekExtension differs from previously opened versions, once.
+
+## 0.2.0
+
+- Paste GeoJSON text directly with ⌘V or the welcome screen button. GeoPeek validates the content and displays it on the map.
+- The published 0.2.0 disk image actually contained the 0.1.1 app and was removed. 0.3.0 is the first build that ships this feature.
+
+## 0.1.1
+
+- Turkish, CJK, and other non-ASCII characters display correctly in the table view.
+- Auto-zoom on row click is replaced with a dedicated "Show on Map" button, so text can be selected and copied.
+- Features zoom to center correctly when navigating from the table view.
+- The disk image uses a drag-to-Applications layout and a custom background.
+
+## 0.1.0
+
+- Initial release of GeoPeek, a macOS GeoJSON viewer and Quick Look extension.
+- The map renders interactively with MapLibre GL, in dark or light mode.
+- Map view and table view can be switched, with feature selection.
+- Quick Look generates a preview and a thumbnail for `.geojson` files.
+- The stats panel shows feature count, geometry types, and bounding box.
+- Files open by drag and drop or with ⌘O.
+- Invalid GeoJSON files show an error.
