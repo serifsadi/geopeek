@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="GeoPeek" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>Ignored container</name>
+  </metadata>
+  <wpt lat="37.8" lon="-122.4">
+    <ele>12.5</ele>
+    <time>2020-01-01T00:00:00Z</time>
+    <name>Trailhead</name>
+    <desc>Start &amp; go</desc>
+    <type>parking</type>
+  </wpt>
+  <wpt lat="1" lon="2">
+    <name>Bare</name>
+  </wpt>
+  <rte>
+    <name>Ridge</name>
+    <desc>The ridge route</desc>
+    <type>route</type>
+    <rtept lat="37.8" lon="-122.4">
+      <ele>12.5</ele>
+      <time>2020-01-01T00:00:00Z</time>
+    </rtept>
+    <rtept lat="37.9" lon="-122.5">
+      <ele>20</ele>
+    </rtept>
+  </rte>
+  <trk>
+    <name>Out</name>
+    <desc>One segment</desc>
+    <type>hike</type>
+    <trkseg>
+      <trkpt lat="37.1" lon="-122.1"><ele>1</ele><time>2020-01-02T00:00:00Z</time></trkpt>
+      <trkpt lat="37.2" lon="-122.2"><ele>2</ele></trkpt>
+    </trkseg>
+  </trk>
+  <trk>
+    <name>Morning</name>
+    <desc>A walk</desc>
+    <type>hike</type>
+    <trkseg>
+      <trkpt lat="38.0" lon="-121.0"><ele>3</ele></trkpt>
+      <trkpt lat="38.1" lon="-121.1"><ele>4</ele></trkpt>
+    </trkseg>
+    <trkseg>
+      <trkpt lat="39.0" lon="-120.0"><ele>5</ele></trkpt>
+      <trkpt lat="39.1" lon="-120.1"><ele>6</ele></trkpt>
+    </trkseg>
+  </trk>
+</gpx>

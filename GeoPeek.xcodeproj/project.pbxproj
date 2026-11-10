@@ -509,6 +509,10 @@
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lz",
+				);
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
@@ -542,6 +546,10 @@
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lz",
+				);
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
@@ -584,6 +592,10 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lz",
+				);
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
@@ -627,6 +639,10 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lz",
+				);
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
@@ -660,6 +676,10 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lz",
+				);
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
@@ -694,6 +714,10 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lz",
+				);
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;

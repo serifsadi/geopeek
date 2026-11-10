@@ -13,13 +13,13 @@
     "Close file" : {
 
     },
-    "Drop a GeoJSON file here" : {
+    "Drop a GeoJSON, KML, KMZ, or GPX file" : {
       "comment" : "Instruction text inside the drag-and-drop zone",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Drop a GeoJSON file here"
+            "value" : "Drop a GeoJSON, KML, KMZ, or GPX file"
           }
         }
       }
@@ -36,13 +36,13 @@
         }
       }
     },
-    "GeoJSON Quick Look & Viewer" : {
+    "GeoJSON, KML, KMZ & GPX" : {
       "comment" : "Subtitle shown below the app name on the welcome screen",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "GeoJSON Quick Look & Viewer"
+            "value" : "GeoJSON, KML, KMZ & GPX"
           }
         }
       }
@@ -58,13 +58,13 @@
         }
       }
     },
-    "Open GeoJSON File…" : {
+    "Open File…" : {
       "comment" : "Label on the Open button and menu item",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Open GeoJSON File…"
+            "value" : "Open File…"
           }
         }
       }
@@ -87,7 +87,7 @@
     "Show in Finder" : {
 
     },
-    "You can also press **Space** on any `.geojson` file in Finder to preview it." : {
+    "You can also press **Space** on a `.geojson`, `.json`, `.kml`, `.kmz`, or `.gpx` file in Finder to preview it." : {
 
     },
     "You can also press %@ on any %@ file in Finder to preview it." : {

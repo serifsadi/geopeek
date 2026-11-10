@@ -1,7 +1,7 @@
 // Exercises the real parser and HTML builder in Shared/GeoRenderer.swift.
 //
 //   swiftc -o /tmp/verify-html-safety \
-//     Shared/GeoRenderer.swift Shared/GeoJSONSniff.swift Shared/ThumbnailLayout.swift \
+//     Shared/GeoJSONImport.swift Shared/GeoRenderer.swift Shared/GeoJSONSniff.swift Shared/ThumbnailLayout.swift \
 //     test-fixtures/verify-html-safety.swift
 //   /tmp/verify-html-safety
 //

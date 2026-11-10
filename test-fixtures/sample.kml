@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">
+  <Document>
+    <name>Sample</name>
+    <Schema id="parkSchema" name="parkSchema">
+      <SimpleField type="string" name="code"/>
+    </Schema>
+    <Folder>
+      <name>Places</name>
+      <Placemark>
+        <name>Park</name>
+        <description>A &amp; B</description>
+        <Style>
+          <IconStyle>
+            <name>Styled</name>
+            <Icon><href>http://example.com/icon.png</href></Icon>
+          </IconStyle>
+        </Style>
+        <ExtendedData>
+          <Data name="year">
+            <value>2020</value>
+          </Data>
+          <SchemaData schemaUrl="#parkSchema">
+            <SimpleData name="code">P1</SimpleData>
+          </SchemaData>
+        </ExtendedData>
+        <Point>
+          <coordinates>-122.4, 37.8, 10</coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Mixed</name>
+        <MultiGeometry>
+          <Point><coordinates>-122.0,37.0</coordinates></Point>
+          <LineString>
+            <coordinates>-122.0,37.0 -122.1,37.1</coordinates>
+          </LineString>
+        </MultiGeometry>
+      </Placemark>
+      <Placemark>
+        <name>Gates</name>
+        <MultiGeometry>
+          <Point><coordinates>-122.2,37.2</coordinates></Point>
+          <Point><coordinates>-122.3,37.3,5</coordinates></Point>
+        </MultiGeometry>
+      </Placemark>
+      <Placemark>
+        <name>Solo</name>
+        <MultiGeometry>
+          <Point><coordinates>8,8</coordinates></Point>
+        </MultiGeometry>
+      </Placemark>
+      <Placemark>
+        <name>Paths</name>
+        <MultiGeometry>
+          <LineString><coordinates>4,4 5,5</coordinates></LineString>
+          <LineString><coordinates>6,6 7,7</coordinates></LineString>
+        </MultiGeometry>
+      </Placemark>
+      <Placemark>
+        <name>Plots</name>
+        <MultiGeometry>
+          <Polygon>
+            <outerBoundaryIs>
+              <LinearRing>
+                <coordinates>10,10 11,10 11,11 10,11 10,10</coordinates>
+              </LinearRing>
+            </outerBoundaryIs>
+          </Polygon>
+          <Polygon>
+            <outerBoundaryIs>
+              <LinearRing>
+                <coordinates>12,12 13,12 13,13 12,13 12,12</coordinates>
+              </LinearRing>
+            </outerBoundaryIs>
+          </Polygon>
+        </MultiGeometry>
+      </Placemark>
+    </Folder>
+    <Placemark>
+      <name>Block</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>0,0 1,0 1,1 0,1 0,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+        <innerBoundaryIs>
+          <LinearRing>
+            <coordinates>0.2,0.2 0.8,0.2 0.8,0.8 0.2,0.8 0.2,0.2</coordinates>
+          </LinearRing>
+        </innerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>Loop</name>
+      <LinearRing>
+        <coordinates>2,2 3,2 3,3 2,2</coordinates>
+      </LinearRing>
+    </Placemark>
+    <Placemark>
+      <name>Road</name>
+      <LineString>
+        <coordinates>
+          -121.0,36.0,1
+          -121.5,36.5,2
+        </coordinates>
+      </LineString>
+    </Placemark>
+    <Placemark>
+      <name>Flight</name>
+      <gx:Track>
+        <when>2020-01-01T00:00:00Z</when>
+        <gx:coord>-120.0 35.0 100</gx:coord>
+        <when>2020-01-01T00:01:00Z</when>
+        <gx:coord>-120.1 35.1 110</gx:coord>
+      </gx:Track>
+    </Placemark>
+    <Placemark>
+      <name>Flights</name>
+      <gx:MultiTrack>
+        <gx:Track>
+          <gx:coord>-119.0 34.0 1</gx:coord>
+          <gx:coord>-119.1 34.1 2</gx:coord>
+        </gx:Track>
+        <gx:Track>
+          <gx:coord>-118.0 33.0 3</gx:coord>
+          <gx:coord>-118.1 33.1 4</gx:coord>
+        </gx:Track>
+      </gx:MultiTrack>
+    </Placemark>
+    <NetworkLink>
+      <name>Remote</name>
+      <Placemark>
+        <name>Should Not Appear</name>
+        <Point><coordinates>9,9</coordinates></Point>
+      </Placemark>
+    </NetworkLink>
+    <GroundOverlay>
+      <name>Overlay</name>
+      <Icon><href>overlay.png</href></Icon>
+    </GroundOverlay>
+  </Document>
+</kml>

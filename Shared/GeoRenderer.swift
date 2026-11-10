@@ -317,7 +317,8 @@ func openMapLinkInBrowser(_ url: URL) {
 
 /// Static page for a file that could not be read. Text that parsed, including
 /// JSON that is not GeoJSON, uses `makeJSONFallbackHTML` instead.
-func makeErrorHTML() -> String {
+func makeErrorHTML(format: String = "GeoJSON") -> String {
+    let name = escapeHTMLText(format)
     return """
     <!DOCTYPE html>
     <html>
@@ -365,8 +366,8 @@ func makeErrorHTML() -> String {
             <circle cx="12" cy="17" r="0.5" fill="currentColor" stroke="none"/>
           </svg>
         </div>
-        <h1>Not Valid GeoJSON</h1>
-        <p class="sub">This file doesn't contain recognisable GeoJSON data and cannot be previewed.</p>
+        <h1>Not Valid \(name)</h1>
+        <p class="sub">This file doesn't contain recognisable \(name) data and cannot be previewed.</p>
       </div>
     </body>
     </html>
@@ -402,6 +403,21 @@ func renderPreview(data: Data,
     }
     return .fallback(html: jsonFallbackHTML(
         fileName: fileName, data: data, maxBytes: maxFallbackBytes, parsed: nil))
+}
+
+/// GeoJSON and JSON keep `renderPreview`. KML, KMZ, and GPX are converted
+/// first. An empty or malformed import uses the same not-valid page, named
+/// for that format.
+func renderFilePreview(data: Data,
+                       fileName: String,
+                       maxFallbackBytes: Int = jsonFallbackMaxBytes) -> RenderedPreview {
+    if let kind = GeoImportKind(fileName: fileName) {
+        guard let geoJSON = geoJSONData(from: data, kind: kind) else {
+            return .fallback(html: makeErrorHTML(format: kind.displayName))
+        }
+        return renderPreview(data: geoJSON, fileName: fileName, maxFallbackBytes: maxFallbackBytes)
+    }
+    return renderPreview(data: data, fileName: fileName, maxFallbackBytes: maxFallbackBytes)
 }
 
 /// Read-only page for a file that is not GeoJSON.

@@ -10,6 +10,9 @@
 			<array>
 				<string>public.geojson</string>
 				<string>public.json</string>
+				<string>com.google.earth.kml</string>
+				<string>com.google.earth.kmz</string>
+				<string>com.topografix.gpx</string>
 			</array>
 			<key>QLThumbnailMinimumDimension</key>
 			<integer>16</integer>
