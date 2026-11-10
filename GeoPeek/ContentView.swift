@@ -274,6 +274,13 @@ private struct RecentRow: View {
 
     private enum Action { case remove, reveal }
 
+    private static let relativeDate: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.dateTimeStyle = .named
+        formatter.unitsStyle = .full
+        return formatter
+    }()
+
     var body: some View {
         HStack(spacing: 4) {
             Button(action: onOpen) {
@@ -292,8 +299,8 @@ private struct RecentRow: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                         if let opened = RecentFiles.shared.openedAt(for: url) {
-                            TimelineView(.periodic(from: .now, by: 1)) { _ in
-                                Text(opened, format: Date.RelativeFormatStyle(presentation: .named))
+                            TimelineView(.periodic(from: .now, by: 1)) { context in
+                                Text(Self.relativeDate.localizedString(for: opened, relativeTo: context.date))
                                     .font(.caption2)
                                     .foregroundStyle(.tertiary)
                                     .lineLimit(1)
