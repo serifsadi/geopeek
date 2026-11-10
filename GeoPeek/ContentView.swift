@@ -140,12 +140,12 @@ struct WelcomeView: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            if !recentItems.isEmpty {
+                recentColumn
+                Divider()
+            }
             welcomeColumn
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if !recentItems.isEmpty {
-                Divider()
-                recentColumn
-            }
         }
         .onAppear { RecentFiles.shared.refresh() }
     }
@@ -205,42 +205,38 @@ struct WelcomeView: View {
     }
 
     private var recentColumn: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 0) {
             Text("Recent")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.bottom, 4)
-            ForEach(recentItems, id: \.absoluteString) { url in
-                Button {
-                    openRecent(url, openWindow: openWindow)
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
-                            .resizable()
-                            .frame(width: 32, height: 32)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(url.lastPathComponent)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            Text((url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
+                .padding(.horizontal, 14)
+                .padding(.top, 16)
+                .padding(.bottom, 6)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(recentItems, id: \.absoluteString) { url in
+                        RecentRow(url: url) {
+                            openRecent(url, openWindow: openWindow)
                         }
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 6)
             }
+            Divider()
+            Button {
+                RecentFiles.shared.clear()
+            } label: {
+                Text("Clear Recents")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
         }
         .frame(width: 280, alignment: .leading)
-        .frame(maxHeight: .infinity, alignment: .center)
-        .padding(.trailing, 16)
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     private var dropZone: some View {
@@ -266,6 +262,89 @@ struct WelcomeView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.15), value: isDragOver)
+    }
+}
+
+private struct RecentRow: View {
+    let url: URL
+    let onOpen: () -> Void
+
+    @State private var hovering = false
+    @FocusState private var focusedAction: Action?
+
+    private enum Action: Hashable { case remove, reveal }
+
+    private var showsActions: Bool { hovering || focusedAction != nil }
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            Button(action: onOpen) {
+                HStack(spacing: 8) {
+                    Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                        .resizable()
+                        .frame(width: 28, height: 28)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(url.lastPathComponent)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Text(RecentFiles.shared.abbreviatedParentPath(for: url))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        if let opened = RecentFiles.shared.openedAt(for: url) {
+                            Text(opened, format: Date.RelativeFormatStyle(presentation: .named))
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 0) {
+                actionButton("xmark", action: .remove, help: "Remove from Recents") {
+                    RecentFiles.shared.remove(url)
+                }
+                actionButton("magnifyingglass", action: .reveal, help: "Show in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                }
+            }
+            .padding(.trailing, 4)
+            .opacity(showsActions ? 1 : 0)
+            .allowsHitTesting(showsActions)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(hovering ? Color.primary.opacity(0.06) : Color.clear)
+        )
+        .onHover { hovering = $0 }
+    }
+
+    private func actionButton(
+        _ systemName: String,
+        action: Action,
+        help: LocalizedStringKey,
+        perform: @escaping () -> Void
+    ) -> some View {
+        Button(action: perform) {
+            Image(systemName: systemName)
+                .font(.system(size: 11, weight: .medium))
+                .frame(width: 22, height: 22)
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .foregroundStyle(.secondary)
+        .focused($focusedAction, equals: action)
+        .help(Text(help))
+        .accessibilityLabel(Text(help))
     }
 }
 

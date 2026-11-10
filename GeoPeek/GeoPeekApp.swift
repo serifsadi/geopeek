@@ -5,6 +5,7 @@
 //  Created by Şerif Şadi Şenkule on 28.02.2026.
 //
 
+import Darwin
 import SwiftUI
 
 @main
@@ -109,24 +110,67 @@ final class RecentFiles {
     static let shared = RecentFiles()
 
     private(set) var urls: [URL] = []
+    private var openDates: [String: Date] = [:]
 
     private init() { refresh() }
 
     func note(_ url: URL) {
         guard !Self.isTemporary(url) else { return }
-        let started = url.startAccessingSecurityScopedResource()
-        NSDocumentController.shared.noteNewRecentDocumentURL(url)
-        if started { url.stopAccessingSecurityScopedResource() }
+        Self.writeBookmark(url)
+        var dates = Self.loadDates()
+        dates[Self.key(for: url)] = Date().timeIntervalSince1970
+        Self.storeDates(dates)
+        refresh()
+    }
+
+    /// Document recents have no per-item remove, so the list is cleared and the others are noted again, oldest first.
+    func remove(_ url: URL) {
+        let path = Self.key(for: url)
+        let remaining = NSDocumentController.shared.recentDocumentURLs.filter { Self.key(for: $0) != path }
+        NSDocumentController.shared.clearRecentDocuments(nil)
+        for item in remaining.reversed() {
+            Self.writeBookmark(item)
+        }
+        var dates = Self.loadDates()
+        dates.removeValue(forKey: path)
+        Self.storeDates(dates)
         refresh()
     }
 
     func clear() {
         NSDocumentController.shared.clearRecentDocuments(nil)
+        UserDefaults.standard.removeObject(forKey: Self.datesKey)
         urls = []
+        openDates = [:]
     }
 
     func refresh() {
-        urls = NSDocumentController.shared.recentDocumentURLs.filter { !Self.isTemporary($0) && Self.exists($0) }
+        let recent = NSDocumentController.shared.recentDocumentURLs
+        urls = recent.filter { !Self.isTemporary($0) && Self.exists($0) }
+        let stored = Self.loadDates()
+        var dates: [String: Date] = [:]
+        for url in urls {
+            let key = Self.key(for: url)
+            if let interval = stored[key] {
+                dates[key] = Date(timeIntervalSince1970: interval)
+            }
+        }
+        openDates = dates
+    }
+
+    func openedAt(for url: URL) -> Date? {
+        openDates[Self.key(for: url)]
+    }
+
+    /// `NSHomeDirectory()` is the sandbox container. The real home comes from the password database.
+    func abbreviatedParentPath(for url: URL) -> String {
+        let path = url.deletingLastPathComponent().standardizedFileURL.path
+        let home = Self.homeDirectory
+        guard !home.isEmpty else { return path }
+        if path == home { return "~" }
+        let prefix = home + "/"
+        guard path.hasPrefix(prefix) else { return path }
+        return "~/" + String(path.dropFirst(prefix.count))
     }
 
     /// The bookmarked recent URL first. A restored URL can compare equal and still have no bookmark.
@@ -136,6 +180,40 @@ final class RecentFiles {
             $0.standardizedFileURL.path == path
         }) else { return [url] }
         return [recent, url]
+    }
+
+    private static let datesKey = "recentOpenDates"
+
+    private static let homeDirectory: String = {
+        guard let entry = getpwuid(getuid()), let directory = entry.pointee.pw_dir else { return "" }
+        var path = String(cString: directory)
+        if path.count > 1, path.hasSuffix("/") { path.removeLast() }
+        return path
+    }()
+
+    private static func loadDates() -> [String: TimeInterval] {
+        guard let stored = UserDefaults.standard.dictionary(forKey: datesKey) else { return [:] }
+        var dates: [String: TimeInterval] = [:]
+        for (key, value) in stored {
+            if let interval = value as? TimeInterval {
+                dates[key] = interval
+            }
+        }
+        return dates
+    }
+
+    private static func storeDates(_ dates: [String: TimeInterval]) {
+        UserDefaults.standard.set(dates, forKey: datesKey)
+    }
+
+    private static func key(for url: URL) -> String {
+        url.standardizedFileURL.path
+    }
+
+    private static func writeBookmark(_ url: URL) {
+        let started = url.startAccessingSecurityScopedResource()
+        NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        if started { url.stopAccessingSecurityScopedResource() }
     }
 
     private static func isTemporary(_ url: URL) -> Bool {
