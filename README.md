@@ -126,7 +126,7 @@ log stream --level info --predicate 'subsystem BEGINSWITH "dev.serifsadi.GeoPeek
 - SwiftUI for the app (`GeoPeek/GeoPeekApp.swift`, `GeoPeek/ContentView.swift`)
 - AppKit for the Quick Look and thumbnail extensions
 - WebKit (WKWebView)
-- [MapLibre GL JS](https://maplibre.org/) 4.7.1
+- [MapLibre GL JS](https://maplibre.org/) 5.24.0
 - Quick Look and thumbnail extensions
 
 ## Privacy
@@ -145,7 +145,7 @@ Maintainers: see [RELEASING.md](RELEASING.md).
 
 ## Acknowledgements
 
-- [MapLibre GL JS](https://maplibre.org/) 4.7.1, [BSD-3-Clause](https://github.com/maplibre/maplibre-gl-js/blob/v4.7.1/LICENSE.txt)
+- [MapLibre GL JS](https://maplibre.org/) 5.24.0, [BSD-3-Clause](https://github.com/maplibre/maplibre-gl-js/blob/v5.24.0/LICENSE.txt)
 - Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), [ODbL](https://opendatacommons.org/licenses/odbl/)
 - [OpenMapTiles](https://openmaptiles.org/) schema
 - [OpenFreeMap](https://openfreemap.org/)

@@ -1355,7 +1355,16 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
 
         var mapOptions = {
           container: 'map',
-          style: plainStyle(bgColor)
+          style: plainStyle(bgColor),
+          // An options object replaces the library default. compact is
+          // already the default, and the MapLibre credit has to be repeated
+          // or the control is empty until a basemap source arrives. Empty
+          // attributions skip the compact class, and the next update would
+          // expand the control again.
+          attributionControl: {
+            compact: true,
+            customAttribution: '<a href="https://maplibre.org/" target="_blank">MapLibre</a>'
+          }
         };
 
         if (META.bounds) {
@@ -1367,6 +1376,16 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
         }
 
         var map = new maplibregl.Map(mapOptions);
+
+        // The compact control is created expanded (maplibregl-compact-show
+        // and open). Drop both so it starts as the (i) button. A click still
+        // opens the credits. With the compact class already set, later
+        // source attributions do not expand it again.
+        var attrib = document.querySelector('.maplibregl-ctrl-attrib');
+        if (attrib) {
+          attrib.classList.remove('maplibregl-compact-show');
+          attrib.removeAttribute('open');
+        }
 
         map.on('error', function(e) {
           var info = basemapErrorInfo(e);
