@@ -270,11 +270,9 @@ private struct RecentRow: View {
     let onOpen: () -> Void
 
     @State private var hovering = false
-    @FocusState private var focusedAction: Action?
+    @State private var hoveredAction: Action?
 
-    private enum Action: Hashable { case remove, reveal }
-
-    private var showsActions: Bool { hovering || focusedAction != nil }
+    private enum Action { case remove, reveal }
 
     var body: some View {
         HStack(spacing: 4) {
@@ -288,7 +286,7 @@ private struct RecentRow: View {
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                             .truncationMode(.middle)
-                        Text(RecentFiles.shared.abbreviatedParentPath(for: url))
+                        subtitle
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -307,12 +305,12 @@ private struct RecentRow: View {
             .buttonStyle(.plain)
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
-            if showsActions {
-                HStack(spacing: 0) {
-                    actionButton("xmark", action: .remove, help: "Remove from Recents") {
+            if hovering {
+                HStack(spacing: 2) {
+                    actionButton("xmark.circle.fill", action: .remove, help: "Remove from Recents") {
                         RecentFiles.shared.remove(url)
                     }
-                    actionButton("magnifyingglass", action: .reveal, help: "Show in Finder") {
+                    actionButton("magnifyingglass.circle.fill", action: .reveal, help: "Show in Finder") {
                         NSWorkspace.shared.activateFileViewerSelecting([url])
                     }
                 }
@@ -327,7 +325,22 @@ private struct RecentRow: View {
             RoundedRectangle(cornerRadius: 6)
                 .fill(hovering ? Color.primary.opacity(0.06) : Color.clear)
         )
-        .onHover { hovering = $0 }
+        .onHover { inside in
+            hovering = inside
+            if !inside { hoveredAction = nil }
+        }
+    }
+
+    @ViewBuilder
+    private var subtitle: some View {
+        switch hoveredAction {
+        case .remove:
+            Text("Remove from Recents")
+        case .reveal:
+            Text("Show in Finder")
+        case nil:
+            Text(RecentFiles.shared.abbreviatedParentPath(for: url))
+        }
     }
 
     private func actionButton(
@@ -338,15 +351,20 @@ private struct RecentRow: View {
     ) -> some View {
         Button(action: perform) {
             Image(systemName: systemName)
-                .font(.system(size: 11, weight: .medium))
-                .frame(width: 22, height: 22)
+                .font(.system(size: 16))
+                .frame(width: 20, height: 20)
         }
-        .buttonStyle(.borderless)
-        .controlSize(.small)
-        .foregroundStyle(.secondary)
-        .focused($focusedAction, equals: action)
+        .buttonStyle(.plain)
+        .foregroundStyle(hoveredAction == action ? .primary : .secondary)
         .help(Text(help))
         .accessibilityLabel(Text(help))
+        .onHover { inside in
+            if inside {
+                hoveredAction = action
+            } else if hoveredAction == action {
+                hoveredAction = nil
+            }
+        }
     }
 }
 
