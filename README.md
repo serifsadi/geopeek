@@ -8,6 +8,12 @@
   A lightweight macOS app and Quick Look extension for previewing GeoJSON files.
 </p>
 
+<p align="center">
+  <a href=".github/images/quick_look_view.png">
+    <img src=".github/images/quick_look_view.png" width="720" alt="GeoPeek Quick Look preview of a GeoJSON file in Finder">
+  </a>
+</p>
+
 ---
 
 ## Features
@@ -25,15 +31,40 @@
 
 ## Screenshots
 
-<p align="center">
-  <img src=".github/images/banner.png" alt="GeoPeek Screenshots" width="100%">
-</p>
-
-### Finder Integration
-
-<p align="center">
-  <img src=".github/images/finder_banner.png" alt="Finder Integration" width="100%">
-</p>
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <a href=".github/images/map_view.png">
+        <img src=".github/images/map_view.png" width="100%" alt="Map view">
+      </a>
+      <br>
+      Map view
+    </td>
+    <td align="center" width="50%">
+      <a href=".github/images/selection_popup.png">
+        <img src=".github/images/selection_popup.png" width="100%" alt="Feature popup">
+      </a>
+      <br>
+      Feature popup
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <a href=".github/images/table_view.png">
+        <img src=".github/images/table_view.png" width="100%" alt="Attribute table">
+      </a>
+      <br>
+      Attribute table
+    </td>
+    <td align="center" width="50%">
+      <a href=".github/images/finder_column_view.png">
+        <img src=".github/images/finder_column_view.png" width="100%" alt="Finder column preview">
+      </a>
+      <br>
+      Finder column preview
+    </td>
+  </tr>
+</table>
 
 ## Requirements
 
