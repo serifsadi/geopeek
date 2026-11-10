@@ -369,6 +369,7 @@ struct MapView: NSViewRepresentable {
                         break
                     }
                 }
+                let data = data
                 await MainActor.run {
                     guard let data else {
                         self.onInaccessible()
