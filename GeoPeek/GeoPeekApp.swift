@@ -25,26 +25,47 @@ struct GeoPeekApp: App {
 }
 
 struct ViewerCommands: Commands {
-    @FocusedValue(\.openGeoJSON) private var openGeoJSON
-    @FocusedValue(\.pasteGeoJSON) private var pasteGeoJSON
-
+    @FocusedBinding(\.fileURL) private var focusedFile
+    @Environment(\.openWindow) private var openWindow
     var body: some Commands {
+        let urls = RecentFiles.shared.urls
         CommandGroup(after: .newItem) {
-            Button("Open GeoJSON File…") { openGeoJSON?() }
-                .keyboardShortcut("o", modifiers: .command)
-                .disabled(openGeoJSON == nil)
+            Button("Open GeoJSON File…") {
+                if let focusedFile = $focusedFile { openGeoJSONFile(into: focusedFile) }
+            }
+            .keyboardShortcut("o", modifiers: .command)
+            .disabled($focusedFile == nil)
+            // A WindowGroup app does not get the document Open Recent menu.
+            Menu("Open Recent") {
+                if urls.isEmpty {
+                    Button("Clear Menu") {}
+                        .disabled(true)
+                } else {
+                    ForEach(urls, id: \.absoluteString) { url in
+                        Button(url.lastPathComponent) { openRecent(url, openWindow: openWindow) }
+                    }
+                    Divider()
+                    Button("Clear Menu") { RecentFiles.shared.clear() }
+                }
+            }
         }
         CommandGroup(replacing: .pasteboard) {
-            Button("Paste GeoJSON") { pasteGeoJSON?() }
-                .keyboardShortcut("v", modifiers: .command)
-                .disabled(pasteGeoJSON == nil)
+            Button("Paste GeoJSON") {
+                if let focusedFile = $focusedFile { pasteGeoJSON(into: focusedFile) }
+            }
+            .keyboardShortcut("v", modifiers: .command)
+            .disabled($focusedFile == nil)
         }
     }
 }
 
 extension FocusedValues {
-    @Entry var openGeoJSON: (() -> Void)?
-    @Entry var pasteGeoJSON: (() -> Void)?
+    @Entry var fileURL: Binding<URL?>?
+}
+
+func openRecent(_ url: URL, openWindow: OpenWindowAction) {
+    RecentFiles.shared.note(url)
+    openWindow(value: url)
 }
 
 /// Finder and `open` deliver every URL here. `openWindow` creates a window
@@ -58,17 +79,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !queued.isEmpty else { return }
         let urls = queued
         queued.removeAll()
-        urls.forEach { openWindow(value: $0) }
+        present(urls)
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        RecentFiles.shared.refresh()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        let files = urls.filter {
-            ["geojson", "json"].contains($0.pathExtension.lowercased())
-        }
-        guard let openWindow else {
+        let files = urls.filter(isGeoJSONFile)
+        files.forEach { RecentFiles.shared.note($0) }
+        guard openWindow != nil else {
             queued.append(contentsOf: files)
             return
         }
-        files.forEach { openWindow(value: $0) }
+        present(files)
+    }
+
+    private func present(_ urls: [URL]) {
+        guard let openWindow else { return }
+        urls.forEach { openWindow(value: $0) }
+    }
+}
+
+/// Recent files, and the security-scoped bookmarks AppKit stores for them.
+@MainActor
+@Observable
+final class RecentFiles {
+    static let shared = RecentFiles()
+
+    private(set) var urls: [URL] = []
+
+    private init() { refresh() }
+
+    func note(_ url: URL) {
+        guard !Self.isTemporary(url) else { return }
+        let started = url.startAccessingSecurityScopedResource()
+        NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        if started { url.stopAccessingSecurityScopedResource() }
+        refresh()
+    }
+
+    func clear() {
+        NSDocumentController.shared.clearRecentDocuments(nil)
+        urls = []
+    }
+
+    func refresh() {
+        urls = NSDocumentController.shared.recentDocumentURLs.filter { !Self.isTemporary($0) && Self.exists($0) }
+    }
+
+    /// The bookmarked recent URL first. A restored URL can compare equal and still have no bookmark.
+    func accessCandidates(for url: URL) -> [URL] {
+        let path = url.standardizedFileURL.path
+        guard let recent = NSDocumentController.shared.recentDocumentURLs.first(where: {
+            $0.standardizedFileURL.path == path
+        }) else { return [url] }
+        return [recent, url]
+    }
+
+    private static func isTemporary(_ url: URL) -> Bool {
+        let temporary = URL(fileURLWithPath: NSTemporaryDirectory()).standardizedFileURL.path
+        return url.standardizedFileURL.path.hasPrefix(temporary)
+    }
+
+    private static func exists(_ url: URL) -> Bool {
+        let started = url.startAccessingSecurityScopedResource()
+        defer { if started { url.stopAccessingSecurityScopedResource() } }
+        do {
+            return try url.checkResourceIsReachable()
+        } catch let error as NSError {
+            let missing = error.domain == NSCocoaErrorDomain
+                && (error.code == CocoaError.fileReadNoSuchFile.rawValue
+                    || error.code == CocoaError.fileNoSuchFile.rawValue)
+            return !missing
+        }
     }
 }

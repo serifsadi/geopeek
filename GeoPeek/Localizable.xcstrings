@@ -4,6 +4,9 @@
     "Back" : {
 
     },
+    "Clear Menu" : {
+
+    },
     "Close file" : {
 
     },
@@ -66,7 +69,13 @@
     "Paste from Clipboard" : {
 
     },
+    "Open Recent" : {
+
+    },
     "Paste GeoJSON" : {
+
+    },
+    "Recent" : {
 
     },
     "You can also press **Space** on any `.geojson` file in Finder to preview it." : {
