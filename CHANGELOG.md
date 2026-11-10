@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- MapLibre GL JS is 5.24.0. The attribution control starts as the info button. Clicking it shows the MapLibre, OpenFreeMap, OpenMapTiles, and OpenStreetMap credits.
+
 ## 0.3.0
 
 - The published GeoPeek-0.2.0.dmg contains the 0.1.1 app. A second GeoPeek.app, built from the 0.2.0 source, sits beside `Contents` and outside the outer code signature, so installing that disk image runs 0.1.1. `scripts/release.sh` stages the app in a new temporary directory and stops if the sealed bundle has an app outside `Contents`.
