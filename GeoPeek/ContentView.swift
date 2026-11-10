@@ -13,9 +13,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Binding var fileURL: URL?
-    @Environment(\.openWindow) private var openWindow
     @State private var isDragOver = false
-    @State private var windowFile = WindowFile(.constant(nil))
 
     var body: some View {
         ZStack {
@@ -32,7 +30,13 @@ struct ContentView: View {
         }
         .frame(minWidth: 640, minHeight: 480)
         .navigationTitle(windowTitle)
-        .focusedSceneValue(\.windowFile, windowFile)
+        .focusedSceneValue(\.openGeoJSON, { openFilePicker() })
+        .focusedSceneValue(\.pasteGeoJSON, { pasteFromClipboard() })
+        .handlesExternalEvents(preferring: fileURL.map { Set([$0.absoluteString]) } ?? [], allowing: [])
+        .onOpenURL { url in
+            guard isGeoJSON(url) else { return }
+            fileURL = url
+        }
         .toolbar {
             // Native macOS back button — only visible while a file is open.
             // QL/Preview has no toolbar, so this never appears there.
@@ -57,18 +61,6 @@ struct ContentView: View {
             }
             return true
         }
-        .onAppear {
-            windowFile.fileURL = $fileURL
-            windowFile.open = { openFilePicker() }
-            windowFile.paste = { pasteFromClipboard() }
-            WelcomeWindow.register(windowFile)
-            if fileURL == nil, let url = WelcomeWindow.takePending() {
-                fileURL = url
-            } else if WelcomeWindow.hasActivated, let url = WelcomeWindow.takePending() {
-                openWindow(id: viewerWindowID, value: url)
-            }
-        }
-        .onDisappear { WelcomeWindow.unregister(windowFile) }
     }
 
     // MARK: - Helpers

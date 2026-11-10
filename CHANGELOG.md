@@ -3,7 +3,7 @@
 ## Unreleased
 
 - MapLibre GL JS is 5.24.0. The attribution control starts as the info button. Clicking it shows the MapLibre, OpenFreeMap, OpenMapTiles, and OpenStreetMap credits.
-- Opening a file from Finder, Open With, or `open` shows that file in one window. Other windows keep their own files, a window is created when none are open, and restored windows come back with their own files.
+- Opening a file from Finder opens that file in its own window. Other windows keep their files, and restored windows come back with their own files.
 
 ## 0.3.0
 
