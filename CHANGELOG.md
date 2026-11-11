@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- GeoPeek requires macOS 15.0 or later.
 - Windows are not restored. Opening GeoPeek shows the welcome window. Opening a file from Finder shows that file. Windows left open by Quit or a crash stay closed, including state saved by an older build.
 - A KML or KMZ file that only contains network links or image overlays shows Nothing to Preview in the app and in Quick Look, and opening it is added to Recents. An empty or broken file still shows Not Valid and is left out of Recents.
 - A KMZ file whose only KML document is inside a folder is opened. A KML file at the root of the archive is still preferred, and `doc.kml` is preferred over other root KML files.

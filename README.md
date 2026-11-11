@@ -68,7 +68,7 @@
 
 ## Requirements
 
-- **Running GeoPeek** — macOS 14.0 or later
+- **Running GeoPeek** — macOS 15.0 or later
 - **Building from source** — Xcode 16 or later
 
 ## Installation
