@@ -22,7 +22,7 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 WelcomeView(isDragOver: $isDragOver, onOpen: {
-                    openGeoJSONFile(into: $fileURL)
+                    openDocument(into: $fileURL)
                 }, onPaste: {
                     pasteGeoJSON(into: $fileURL)
                 })
@@ -45,14 +45,13 @@ struct ContentView: View {
                 }
             }
         }
-        // Accept dropped .geojson / .json files
+        // Accept dropped GeoJSON, JSON, KML, KMZ, and GPX files.
         .onDrop(of: [.fileURL], isTargeted: $isDragOver) { providers in
             guard let provider = providers.first else { return false }
             // NSURL (not URL) conforms to NSItemProviderReading on macOS
             _ = provider.loadObject(ofClass: NSURL.self) { (nsurl, _) in
-                guard let url = nsurl as? URL, isGeoJSONFile(url) else { return }
+                guard let url = nsurl as? URL, isSupportedDocument(url) else { return }
                 DispatchQueue.main.async {
-                    RecentFiles.shared.note(url)
                     fileURL = url
                 }
             }
@@ -74,23 +73,14 @@ struct ContentView: View {
 
 }
 
-func isGeoJSONFile(_ url: URL) -> Bool {
-    let ext = url.pathExtension.lowercased()
-    return ext == "geojson" || ext == "json"
-}
-
-func openGeoJSONFile(into fileURL: Binding<URL?>) {
+func openDocument(into fileURL: Binding<URL?>) {
     let panel = NSOpenPanel()
     panel.canChooseFiles           = true
     panel.canChooseDirectories     = false
     panel.allowsMultipleSelection  = false
-    panel.allowedContentTypes      = [
-        UTType(filenameExtension: "geojson") ?? .json,
-        .json
-    ]
+    panel.allowedContentTypes      = supportedContentTypes()
     panel.prompt = "Open"
     if panel.runModal() == .OK, let url = panel.url {
-        RecentFiles.shared.note(url)
         fileURL.wrappedValue = url
     }
 }
@@ -117,6 +107,20 @@ func pasteGeoJSON(into fileURL: Binding<URL?>) {
     } catch {
         showPasteError("Could not process clipboard data.")
     }
+}
+
+private func supportedContentTypes() -> [UTType] {
+    var types: [UTType] = []
+    func append(_ type: UTType?) {
+        guard let type, !types.contains(type) else { return }
+        types.append(type)
+    }
+    append(UTType(filenameExtension: "geojson") ?? .json)
+    append(.json)
+    append(UTType("com.google.earth.kml") ?? UTType(filenameExtension: "kml"))
+    append(UTType("com.google.earth.kmz") ?? UTType(filenameExtension: "kmz"))
+    append(UTType("com.topografix.gpx") ?? UTType(filenameExtension: "gpx"))
+    return types
 }
 
 private func showPasteError(_ message: String) {
@@ -163,7 +167,7 @@ struct WelcomeView: View {
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(.primary)
 
-                Text("GeoJSON Quick Look & Viewer")
+                Text("Geospatial Quick Look & Viewer")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -175,7 +179,7 @@ struct WelcomeView: View {
             Spacer().frame(height: 20)
 
             Button(action: onOpen) {
-                Label("Open GeoJSON File…", systemImage: "doc.badge.plus")
+                Label("Open File…", systemImage: "doc.badge.plus")
                     .frame(minWidth: 180)
             }
             .controlSize(.large)
@@ -193,7 +197,7 @@ struct WelcomeView: View {
 
             Spacer().frame(height: 16)
 
-            Text("You can also press **Space** on any `.geojson` file in Finder to preview it.")
+            Text("You can also press **Space** on a GeoJSON, KML, KMZ, or GPX file in Finder to preview it.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
@@ -256,7 +260,7 @@ struct WelcomeView: View {
                     Image(systemName: "arrow.down.doc")
                         .font(.system(size: 22, weight: .light))
                         .foregroundStyle(isDragOver ? accent : .secondary)
-                    Text("Drop a GeoJSON file here")
+                    Text("Drop a file here")
                         .font(.callout)
                         .foregroundStyle(isDragOver ? Color.primary : Color.secondary)
                 }
@@ -486,7 +490,16 @@ struct MapView: NSViewRepresentable {
                     self.documentBaseURL = Coordinator.baseURL
                     let ucc = wv.configuration.userContentController
                     ucc.removeAllUserScripts()
-                    switch renderPreview(data: data, fileName: name) {
+                    let preview = renderFilePreview(data: data, fileName: name)
+                    // Finder, Open, drop, and Open Recent all arrive here.
+                    // The Not Valid page is not an open, so it is left out of Recents.
+                    switch preview {
+                    case .map, .fallback:
+                        RecentFiles.shared.note(url)
+                    case .invalid:
+                        break
+                    }
+                    switch preview {
                     case .map(let html, let userScript):
                         ucc.addUserScript(WKUserScript(
                             source: userScript,
@@ -494,7 +507,7 @@ struct MapView: NSViewRepresentable {
                             forMainFrameOnly: true
                         ))
                         wv.loadHTMLString(html, baseURL: Coordinator.baseURL)
-                    case .fallback(let html):
+                    case .fallback(let html), .invalid(let html):
                         wv.loadHTMLString(html, baseURL: Coordinator.baseURL)
                     }
                 }

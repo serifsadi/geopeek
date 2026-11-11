@@ -60,12 +60,13 @@ class PreviewViewController: NSViewController, QLPreviewingController, WKScriptM
 
     func preparePreviewOfFile(at url: URL) async throws {
         // Read on a background thread. I/O errors propagate as throws.
-        // GeoJSON renders the map; any other bytes render the text fallback.
+        // KML, KMZ, and GPX are converted to GeoJSON first. GeoJSON renders
+        // the map; any other bytes render the text fallback.
         // Quick Look does not fall through to the system JSON preview.
         let fileName = url.lastPathComponent
         let preview = try await Task.detached(priority: .userInitiated) {
             let data = try Data(contentsOf: url)
-            return renderPreview(data: data, fileName: fileName)
+            return renderFilePreview(data: data, fileName: fileName)
         }.value
 
         let baseURL = Bundle(for: type(of: self)).resourceURL
@@ -84,7 +85,7 @@ class PreviewViewController: NSViewController, QLPreviewingController, WKScriptM
                 self.spinner.isHidden = false
                 self.spinner.startAnimation(nil)
                 self.webView.loadHTMLString(html, baseURL: baseURL)
-            case .fallback(let html):
+            case .fallback(let html), .invalid(let html):
                 self.documentBaseURL = nil
                 self.spinner.stopAnimation(nil)
                 self.spinner.isHidden = true

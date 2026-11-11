@@ -2,9 +2,9 @@
 //  ThumbnailProvider.swift
 //  GeoPeekThumbnailExtension
 //
-//  Static GeoPeek icon. `.geojson` never opens the file. `.json` sniffs at
-//  most a few KB for a GeoJSON root type and otherwise declines so Quick Look
-//  keeps the system text thumbnail.
+//  Static GeoPeek icon. `.geojson`, `.kml`, `.kmz`, and `.gpx` never open
+//  the file. `.json` sniffs at most a few KB for a GeoJSON root type and
+//  otherwise declines so Quick Look keeps the system text thumbnail.
 //
 
 import AppKit
@@ -25,7 +25,7 @@ class ThumbnailProvider: QLThumbnailProvider {
                                    _ handler: @escaping (QLThumbnailReply?, Error?) -> Void) {
         let ext = request.fileURL.pathExtension.lowercased()
         thumbnailLog.log("provideThumbnail ext=\(ext, privacy: .public) size=\(request.maximumSize.width, privacy: .public)x\(request.maximumSize.height, privacy: .public) scale=\(request.scale, privacy: .public)")
-        if ext == "geojson" {
+        if ext == "geojson" || GeoImportKind(fileName: request.fileURL.lastPathComponent) != nil {
             handler(Self.iconReply(for: request), nil)
             return
         }

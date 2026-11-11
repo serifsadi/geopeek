@@ -1,7 +1,7 @@
 // Exercises the real parser and HTML builder in Shared/GeoRenderer.swift.
 //
 //   swiftc -o /tmp/verify-html-safety \
-//     Shared/GeoRenderer.swift Shared/GeoJSONSniff.swift Shared/ThumbnailLayout.swift \
+//     Shared/GeoJSONImport.swift Shared/GeoRenderer.swift Shared/GeoJSONSniff.swift Shared/ThumbnailLayout.swift \
 //     test-fixtures/verify-html-safety.swift
 //   /tmp/verify-html-safety
 //
@@ -682,7 +682,7 @@ case .map(let html, let script):
     check(!html.contains("Not valid JSON") && !html.contains("Not Valid GeoJSON"),
           "GeoJSON .json file rendered the error card")
     check(script.hasPrefix("window.__GEO__="), "GeoJSON .json file is missing the user script")
-case .fallback:
+case .fallback, .invalid:
     fail("point.json was shown as plain JSON")
 }
 

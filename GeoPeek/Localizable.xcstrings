@@ -13,36 +13,24 @@
     "Close file" : {
 
     },
-    "Drop a GeoJSON file here" : {
+    "Drop a file here" : {
       "comment" : "Instruction text inside the drag-and-drop zone",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Drop a GeoJSON file here"
+            "value" : "Drop a file here"
           }
         }
       }
     },
-    "Fit to data" : {
-      "comment" : "Tooltip / aria-label for the fit-to-bounds map button",
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fit to data"
-          }
-        }
-      }
-    },
-    "GeoJSON Quick Look & Viewer" : {
+    "Geospatial Quick Look & Viewer" : {
       "comment" : "Subtitle shown below the app name on the welcome screen",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "GeoJSON Quick Look & Viewer"
+            "value" : "Geospatial Quick Look & Viewer"
           }
         }
       }
@@ -58,13 +46,13 @@
         }
       }
     },
-    "Open GeoJSON File…" : {
+    "Open File…" : {
       "comment" : "Label on the Open button and menu item",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Open GeoJSON File…"
+            "value" : "Open File…"
           }
         }
       }
@@ -87,20 +75,8 @@
     "Show in Finder" : {
 
     },
-    "You can also press **Space** on any `.geojson` file in Finder to preview it." : {
+    "You can also press **Space** on a GeoJSON, KML, KMZ, or GPX file in Finder to preview it." : {
 
-    },
-    "You can also press %@ on any %@ file in Finder to preview it." : {
-      "comment" : "Hint below Open button. %1$@ = Space (key), %2$@ = .geojson (extension)",
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "You can also press %1$@ on any %2$@ file in Finder to preview it."
-          }
-        }
-      }
     }
   },
   "version" : "1.0"

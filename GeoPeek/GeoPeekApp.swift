@@ -31,8 +31,8 @@ struct ViewerCommands: Commands {
     var body: some Commands {
         let urls = RecentFiles.shared.urls
         CommandGroup(after: .newItem) {
-            Button("Open GeoJSON File…") {
-                if let focusedFile { openGeoJSONFile(into: focusedFile) }
+            Button("Open File…") {
+                if let focusedFile { openDocument(into: focusedFile) }
             }
             .keyboardShortcut("o", modifiers: .command)
             .disabled(focusedFile == nil)
@@ -65,7 +65,6 @@ extension FocusedValues {
 }
 
 func openRecent(_ url: URL, openWindow: OpenWindowAction) {
-    RecentFiles.shared.note(url)
     openWindow(value: url)
 }
 
@@ -88,8 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        let files = urls.filter(isGeoJSONFile)
-        files.forEach { RecentFiles.shared.note($0) }
+        let files = urls.filter(isSupportedDocument)
         guard openWindow != nil else {
             queued.append(contentsOf: files)
             return

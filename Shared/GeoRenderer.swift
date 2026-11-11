@@ -317,7 +317,8 @@ func openMapLinkInBrowser(_ url: URL) {
 
 /// Static page for a file that could not be read. Text that parsed, including
 /// JSON that is not GeoJSON, uses `makeJSONFallbackHTML` instead.
-func makeErrorHTML() -> String {
+func makeErrorHTML(format: String = "GeoJSON") -> String {
+    let name = escapeHTMLText(format)
     return """
     <!DOCTYPE html>
     <html>
@@ -365,8 +366,8 @@ func makeErrorHTML() -> String {
             <circle cx="12" cy="17" r="0.5" fill="currentColor" stroke="none"/>
           </svg>
         </div>
-        <h1>Not Valid GeoJSON</h1>
-        <p class="sub">This file doesn't contain recognisable GeoJSON data and cannot be previewed.</p>
+        <h1>Not Valid \(name)</h1>
+        <p class="sub">This file doesn't contain recognisable \(name) data and cannot be previewed.</p>
       </div>
     </body>
     </html>
@@ -383,6 +384,8 @@ enum RenderedPreview {
     case map(html: String, userScript: String)
     /// Read-only JSON or raw text. No script, no file-controlled URLs.
     case fallback(html: String)
+    /// The Not Valid page. An empty or malformed file did not open.
+    case invalid(html: String)
 }
 
 /// Map when `data` is GeoJSON; otherwise the read-only fallback. The decision
@@ -402,6 +405,21 @@ func renderPreview(data: Data,
     }
     return .fallback(html: jsonFallbackHTML(
         fileName: fileName, data: data, maxBytes: maxFallbackBytes, parsed: nil))
+}
+
+/// GeoJSON and JSON keep `renderPreview`. KML, KMZ, and GPX are converted
+/// first. An empty or malformed import uses the same not-valid page, named
+/// for that format.
+func renderFilePreview(data: Data,
+                       fileName: String,
+                       maxFallbackBytes: Int = jsonFallbackMaxBytes) -> RenderedPreview {
+    if let kind = GeoImportKind(fileName: fileName) {
+        guard let geoJSON = geoJSONData(from: data, kind: kind) else {
+            return .invalid(html: makeErrorHTML(format: kind.displayName))
+        }
+        return renderPreview(data: geoJSON, fileName: fileName, maxFallbackBytes: maxFallbackBytes)
+    }
+    return renderPreview(data: data, fileName: fileName, maxFallbackBytes: maxFallbackBytes)
 }
 
 /// Read-only page for a file that is not GeoJSON.
@@ -1177,7 +1195,8 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
           '&#x2009;feature' + (META.featureCount !== 1 ? 's' : '') + '</div>' +
           (typeNames ? '<div class="stats-types">' + esc(typeNames) + '</div>' : '') +
           (META.vertexCount > 0 ? '<div class="stats-vertices">' +
-            META.vertexCount.toLocaleString() + '&#x2009;vertices</div>' : '');
+            META.vertexCount.toLocaleString() + '&#x2009;' +
+            (META.vertexCount === 1 ? 'vertex' : 'vertices') + '</div>' : '');
 
         var isDark      = window.matchMedia('(prefers-color-scheme: dark)').matches;
         var bgColor     = isDark ? '#1c1c1e' : '#f2f2f7';
@@ -1494,7 +1513,7 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
           }
           // Show spinner, defer heavy work so the UI updates first
           el.innerHTML = '<div id="table-loading"><div class="spinner"></div>Loading ' +
-            features.length.toLocaleString() + ' features\\u2026</div>';
+            features.length.toLocaleString() + ' feature' + (features.length !== 1 ? 's' : '') + '\\u2026</div>';
           tableBuilt = true;
           setTimeout(function() {
             var allKeys = [], ks = {};
