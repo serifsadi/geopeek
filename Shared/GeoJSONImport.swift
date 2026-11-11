@@ -218,7 +218,9 @@ private func xmlLocalName(_ name: String) -> String {
 }
 
 private func parseXML(_ data: Data, delegate: XMLParserDelegate) -> Bool {
-    let parser = XMLParser(data: data)
+    // `XMLParser(data:)` fails on documents of about 10 MB (parser error 1).
+    // The stream reads the same bytes in chunks and parses those files.
+    let parser = XMLParser(stream: InputStream(data: data))
     parser.shouldProcessNamespaces = true
     parser.shouldResolveExternalEntities = false
     parser.delegate = delegate
@@ -280,6 +282,10 @@ private final class KMLConverter: NSObject, XMLParserDelegate {
         stack.last?.text += whitespaceString
     }
 
+    func parser(_ parser: XMLParser, foundCDATA CDATABlock: Data) {
+        stack.last?.text += String(decoding: CDATABlock, as: UTF8.self)
+    }
+
     func parser(_ parser: XMLParser,
                 didEndElement elementName: String,
                 namespaceURI: String?,
@@ -316,7 +322,14 @@ private final class KMLConverter: NSObject, XMLParserDelegate {
                   let value = trimmed(frame.text) else { return }
             parent.properties[key] = value
         case "SchemaData", "ExtendedData":
-            parent?.properties.merge(frame.properties) { _, new in new }
+            guard let parent else { return }
+            var incoming = frame.properties
+            // The placemark's own name and description win over ExtendedData.
+            if parent.name == "Placemark" {
+                if parent.properties["name"] != nil { incoming.removeValue(forKey: "name") }
+                if parent.properties["description"] != nil { incoming.removeValue(forKey: "description") }
+            }
+            parent.properties.merge(incoming) { _, new in new }
         case "coordinates":
             parent?.positions.append(contentsOf: parseKMLCoordinates(frame.text))
         case "coord":
@@ -427,6 +440,10 @@ private final class GPXConverter: NSObject, XMLParserDelegate {
         stack.last?.text += whitespaceString
     }
 
+    func parser(_ parser: XMLParser, foundCDATA CDATABlock: Data) {
+        stack.last?.text += String(decoding: CDATABlock, as: UTF8.self)
+    }
+
     func parser(_ parser: XMLParser,
                 didEndElement elementName: String,
                 namespaceURI: String?,
@@ -472,28 +489,43 @@ private final class GPXConverter: NSObject, XMLParserDelegate {
                 parent.points.append(position)
             }
         case "trkseg":
-            if let parent, frame.points.count >= 2 {
+            guard let parent else { return }
+            if frame.points.count >= 2 {
                 parent.segments.append(frame.points)
+            } else if let only = frame.points.first, frame.points.count == 1 {
+                parent.points.append(only)
             }
         case "rte":
-            guard frame.points.count >= 2 else { return }
-            features.append(featureObject(.lineString(frame.points), frame.properties))
+            guard let geometry = gpxRouteGeometry(frame.points) else { return }
+            features.append(featureObject(geometry, frame.properties))
         case "trk":
-            let geometry: GJGeometry?
-            if frame.segments.count == 1 {
-                geometry = .lineString(frame.segments[0])
-            } else if frame.segments.count > 1 {
-                geometry = .multiLineString(frame.segments)
-            } else {
-                geometry = nil
-            }
-            if let geometry {
-                features.append(featureObject(geometry, frame.properties))
-            }
+            guard let geometry = gpxTrackGeometry(segments: frame.segments, stray: frame.points) else { return }
+            features.append(featureObject(geometry, frame.properties))
         default:
             break
         }
     }
+}
+
+/// Two or more route points are a LineString. One is a Point. None is skipped.
+private func gpxRouteGeometry(_ points: [[Double]]) -> GJGeometry? {
+    if points.count >= 2 { return .lineString(points) }
+    return gpxLonePoints(points)
+}
+
+/// Segments of two or more points stay a line. A shorter segment is dropped
+/// when the track already has a line. With no line, the leftover points are
+/// a Point or a MultiPoint. An empty track is skipped.
+private func gpxTrackGeometry(segments: [[[Double]]], stray: [[Double]]) -> GJGeometry? {
+    if segments.count == 1 { return .lineString(segments[0]) }
+    if segments.count > 1 { return .multiLineString(segments) }
+    return gpxLonePoints(stray)
+}
+
+private func gpxLonePoints(_ points: [[Double]]) -> GJGeometry? {
+    if points.count == 1 { return .point(points[0]) }
+    if points.count > 1 { return .multiPoint(points) }
+    return nil
 }
 
 /// `lat` and `lon` are attributes. `ele` becomes the altitude when it parses.

@@ -105,6 +105,10 @@ func run() throws {
 
     checkEmptyAndMalformed()
     checkZipSelection()
+    checkCDATA()
+    checkExtendedDataName()
+    checkSinglePointGPX()
+    checkLargeKML()
     try checkRenderHandoff(kml: kml, gpx: gpx, kmz: kmz)
 }
 
@@ -260,7 +264,201 @@ func checkGPX(_ features: [[String: Any]], source: Data) {
     let onePoint = """
     <gpx><rte><name>Short</name><rtept lat="1" lon="2"/></rte></gpx>
     """
-    check(geoJSONData(from: Data(onePoint.utf8), kind: .gpx) == nil, "a one-point route is not a line")
+    guard let shortJSON = geoJSONData(from: Data(onePoint.utf8), kind: .gpx),
+          let short = featureList(in: shortJSON), short.count == 1 else {
+        fail("a one-point route was dropped")
+        return
+    }
+    check(geometry(short[0])["type"] as? String == "Point", "a one-point route should be a Point")
+    check(geometry(short[0])["coordinates"] as? [Double] == [2, 1],
+          "one-point route coordinates \(String(describing: geometry(short[0])["coordinates"]))")
+    check((short[0]["properties"] as? [String: Any])?["name"] as? String == "Short",
+          "one-point route lost its name")
+}
+
+func checkCDATA() {
+    let kml = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <kml xmlns="http://www.opengis.net/kml/2.2">
+    <Document>
+    <Placemark>
+      <name><![CDATA[Ankara & Çankaya]]></name>
+      <description><![CDATA[<b>bold</b> açıklama]]></description>
+      <LineString><coordinates>
+        32.85,39.92,850
+        32.86 , 39.93 , 860
+        32.87,39.94,870,
+      </coordinates></LineString>
+    </Placemark>
+    <Placemark>
+      <name>Partial CDATA <![CDATA[tail]]></name>
+      <Point><coordinates>32.8,39.9</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <description><![CDATA[
+
+             Here is some text
+      ]]></description>
+      <Point><coordinates>-122.0822035425683,37.42228990140251,0</coordinates></Point>
+    </Placemark>
+    </Document>
+    </kml>
+    """
+    guard let features = importedFeatures(Data(kml.utf8), .kml) else {
+        fail("CDATA KML did not convert")
+        return
+    }
+    check(features.count == 3, "CDATA KML feature count \(features.count)")
+    let ankara = features[0]
+    check((ankara["properties"] as? [String: Any])?["name"] as? String == "Ankara & Çankaya",
+          "CDATA KML name \(String(describing: (ankara["properties"] as? [String: Any])?["name"]))")
+    check((ankara["properties"] as? [String: Any])?["description"] as? String == "<b>bold</b> açıklama",
+          "CDATA KML description was dropped or altered")
+    check(geometry(ankara)["type"] as? String == "LineString", "CDATA KML line was not a LineString")
+    let line = geometry(ankara)["coordinates"] as? [[Double]] ?? []
+    check(line.count == 3, "CDATA KML line length \(line.count)")
+    check(line.first == [32.85, 39.92, 850] && line.last == [32.87, 39.94, 870],
+          "CDATA KML coordinates \(line)")
+    check((features[1]["properties"] as? [String: Any])?["name"] as? String == "Partial CDATA tail",
+          "mixed CDATA name \(String(describing: (features[1]["properties"] as? [String: Any])?["name"]))")
+    check((features[2]["properties"] as? [String: Any])?["description"] as? String == "Here is some text",
+          "whitespace-wrapped CDATA description was dropped")
+
+    let gpx = """
+    <gpx>
+      <wpt lat="1" lon="2"><desc><![CDATA[A & B]]></desc></wpt>
+      <wpt lat="3" lon="4"><desc>Partial <![CDATA[tail]]></desc></wpt>
+    </gpx>
+    """
+    guard let points = importedFeatures(Data(gpx.utf8), .gpx) else {
+        fail("CDATA GPX did not convert")
+        return
+    }
+    check((points[0]["properties"] as? [String: Any])?["desc"] as? String == "A & B",
+          "CDATA GPX desc \(String(describing: (points[0]["properties"] as? [String: Any])?["desc"]))")
+    check((points[1]["properties"] as? [String: Any])?["desc"] as? String == "Partial tail",
+          "mixed CDATA GPX desc \(String(describing: (points[1]["properties"] as? [String: Any])?["desc"]))")
+}
+
+func checkExtendedDataName() {
+    let kml = """
+    <kml>
+    <Placemark>
+      <name>Place</name>
+      <description>About</description>
+      <ExtendedData>
+        <Data name="name"><value>Other</value></Data>
+        <Data name="description"><value>Else</value></Data>
+        <Data name="year"><value>2020</value></Data>
+        <SchemaData>
+          <SimpleData name="name">Schema</SimpleData>
+          <SimpleData name="code">P1</SimpleData>
+        </SchemaData>
+      </ExtendedData>
+      <Point><coordinates>1,2</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <ExtendedData>
+        <Data name="name"><value>FromData</value></Data>
+        <Data name="note"><value>kept</value></Data>
+      </ExtendedData>
+      <Point><coordinates>3,4</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <ExtendedData><Data name="name"><value>Early</value></Data></ExtendedData>
+      <name>Late</name>
+      <Point><coordinates>5,6</coordinates></Point>
+    </Placemark>
+    </kml>
+    """
+    guard let features = importedFeatures(Data(kml.utf8), .kml), features.count == 3 else {
+        fail("ExtendedData name collision did not convert")
+        return
+    }
+    let first = features[0]["properties"] as? [String: Any] ?? [:]
+    check(first["name"] as? String == "Place", "placemark name lost to ExtendedData: \(first["name"] ?? "")")
+    check(first["description"] as? String == "About", "placemark description lost to ExtendedData")
+    check(first["year"] as? String == "2020", "non-colliding ExtendedData year was dropped")
+    check(first["code"] as? String == "P1", "non-colliding SimpleData code was dropped")
+    let second = features[1]["properties"] as? [String: Any] ?? [:]
+    check(second["name"] as? String == "FromData", "ExtendedData name was dropped when the placemark had none")
+    check(second["note"] as? String == "kept", "ExtendedData note was dropped")
+    let third = features[2]["properties"] as? [String: Any] ?? [:]
+    check(third["name"] as? String == "Late", "a name after ExtendedData did not win: \(third["name"] ?? "")")
+}
+
+func checkSinglePointGPX() {
+    let only = """
+    <gpx><trk><trkseg>
+      <trkpt lat="-14.8547633" lon="-74.9606255"><ele>559.5</ele></trkpt>
+    </trkseg></trk></gpx>
+    """
+    guard let one = importedFeatures(Data(only.utf8), .gpx), one.count == 1 else {
+        fail("a one-point track was dropped")
+        return
+    }
+    check(geometry(one[0])["type"] as? String == "Point", "one-point track should be a Point")
+    check(geometry(one[0])["coordinates"] as? [Double] == [-74.9606255, -14.8547633, 559.5],
+          "one-point track coordinates \(String(describing: geometry(one[0])["coordinates"]))")
+
+    let many = """
+    <gpx><trk><name>Dots</name>
+      <trkseg><trkpt lat="1" lon="2"/></trkseg>
+      <trkseg><trkpt lat="3" lon="4"/></trkseg>
+    </trk></gpx>
+    """
+    guard let dots = importedFeatures(Data(many.utf8), .gpx), dots.count == 1 else {
+        fail("a track of one-point segments was dropped")
+        return
+    }
+    check(geometry(dots[0])["type"] as? String == "MultiPoint", "one-point segments should be a MultiPoint")
+    check(geometry(dots[0])["coordinates"] as? [[Double]] == [[2, 1], [4, 3]],
+          "MultiPoint coordinates \(String(describing: geometry(dots[0])["coordinates"]))")
+    check((dots[0]["properties"] as? [String: Any])?["name"] as? String == "Dots",
+          "one-point track lost its name")
+
+    let mixed = """
+    <gpx><trk><name>Keep</name>
+      <trkseg><trkpt lat="1" lon="2"/><trkpt lat="3" lon="4"/></trkseg>
+      <trkseg><trkpt lat="5" lon="6"/></trkseg>
+    </trk></gpx>
+    """
+    guard let line = importedFeatures(Data(mixed.utf8), .gpx), line.count == 1 else {
+        fail("a track with one real segment was dropped")
+        return
+    }
+    check(geometry(line[0])["type"] as? String == "LineString", "a valid segment should stay a LineString")
+    check(geometry(line[0])["coordinates"] as? [[Double]] == [[2, 1], [4, 3]],
+          "the one-point segment was kept on the line")
+
+    check(geoJSONData(from: Data("<gpx><trk><name>Empty</name><trkseg></trkseg></trk></gpx>".utf8), kind: .gpx) == nil,
+          "an empty track was imported")
+}
+
+func checkLargeKML() {
+    var data = Data("<?xml version=\"1.0\"?><kml><Document>".utf8)
+    let pad = Data(repeating: 0x20, count: 100_000)
+    for index in 0..<120 {
+        data.append(Data("<Placemark><name>P\(index)</name><description>".utf8))
+        data.append(pad)
+        data.append(Data("</description><Point><coordinates>1,2</coordinates></Point></Placemark>".utf8))
+    }
+    data.append(Data("<Placemark><name>Tail</name><Point><coordinates>9,8</coordinates></Point></Placemark></Document></kml>".utf8))
+    check(data.count > 10 * 1024 * 1024, "generated KML is only \(data.count) bytes")
+    guard let features = importedFeatures(data, .kml) else {
+        fail("KML over 10 MB did not parse")
+        return
+    }
+    check(features.count == 121, "large KML feature count \(features.count)")
+    let names = features.compactMap { ($0["properties"] as? [String: Any])?["name"] as? String }
+    check(names.first == "P0" && names.last == "Tail",
+          "large KML did not keep the first and last placemark")
+    check(geometry(features[120])["coordinates"] as? [Double] == [9, 8], "large KML tail coordinates were wrong")
+}
+
+func importedFeatures(_ data: Data, _ kind: GeoImportKind) -> [[String: Any]]? {
+    guard let json = geoJSONData(from: data, kind: kind) else { return nil }
+    return featureList(in: json)
 }
 
 func checkEmptyAndMalformed() {
