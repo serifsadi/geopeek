@@ -8,6 +8,8 @@
 import Darwin
 import SwiftUI
 
+private let viewerWindowID = "viewer"
+
 @main
 struct GeoPeekApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -15,12 +17,14 @@ struct GeoPeekApp: App {
 
     var body: some Scene {
         let _ = appDelegate.install(openWindow)
-        WindowGroup(for: URL.self) { $fileURL in
+        WindowGroup(id: viewerWindowID, for: URL.self) { $fileURL in
             ContentView(fileURL: $fileURL)
         }
         // The delegate opens one window per file. An empty set keeps SwiftUI
         // from also creating a window for the same external event.
         .handlesExternalEvents(matching: [])
+        .restorationBehavior(.disabled)
+        .defaultLaunchBehavior(.suppressed)
         .commands { ViewerCommands() }
     }
 }
@@ -73,21 +77,48 @@ func openRecent(_ url: URL, openWindow: OpenWindowAction) {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var openWindow: OpenWindowAction?
     private var queued: [URL] = []
+    private var launchedWithFile = false
+    private var finishedLaunching = false
+    private var pendingWelcome = false
 
     func install(_ openWindow: OpenWindowAction) {
         self.openWindow = openWindow
-        guard !queued.isEmpty else { return }
-        let urls = queued
-        queued.removeAll()
-        present(urls)
+        if !queued.isEmpty {
+            let urls = queued
+            queued.removeAll()
+            present(urls)
+        }
+        if pendingWelcome {
+            pendingWelcome = false
+            openWelcome()
+        }
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        finishedLaunching = true
+        if !launchedWithFile {
+            openWelcome()
+        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
         RecentFiles.shared.refresh()
     }
 
+    /// Suppressed launch behavior does not open a window for a Dock click.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if flag || !finishedLaunching { return true }
+        openWindow?(id: viewerWindowID)
+        return false
+    }
+
     func application(_ application: NSApplication, open urls: [URL]) {
         let files = urls.filter(isSupportedDocument)
+        // A cold launch delivers the file URLs before didFinishLaunching.
+        if !finishedLaunching, !files.isEmpty {
+            launchedWithFile = true
+        }
+        guard !files.isEmpty else { return }
         guard openWindow != nil else {
             queued.append(contentsOf: files)
             return
@@ -98,6 +129,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func present(_ urls: [URL]) {
         guard let openWindow else { return }
         urls.forEach { openWindow(value: $0) }
+    }
+
+    private func openWelcome() {
+        guard !launchedWithFile else { return }
+        guard let openWindow else {
+            pendingWelcome = true
+            return
+        }
+        openWindow(id: viewerWindowID)
     }
 }
 
