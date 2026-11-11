@@ -48,7 +48,7 @@ func isSupportedDocument(_ url: URL) -> Bool {
 
 /// A FeatureCollection for `data`, or nil when the file is empty or not valid for `kind`.
 func geoJSONData(from data: Data, kind: GeoImportKind) -> Data? {
-    let features: [[String: Any]]?
+    let features: [GJFeature]?
     switch kind {
     case .kml:
         features = KMLConverter.features(in: data)
@@ -59,11 +59,14 @@ func geoJSONData(from data: Data, kind: GeoImportKind) -> Data? {
         features = GPXConverter.features(in: data)
     }
     guard let features, !features.isEmpty else { return nil }
-    let collection: [String: Any] = [
-        "type": "FeatureCollection",
-        "features": features
-    ]
-    return try? JSONSerialization.data(withJSONObject: collection)
+    var encoded: [String] = []
+    encoded.reserveCapacity(features.count)
+    for feature in features {
+        guard let text = feature.jsonText() else { return nil }
+        encoded.append(text)
+    }
+    let collection = "{\"type\":\"FeatureCollection\",\"features\":[\(encoded.joined(separator: ","))]}"
+    return Data(collection.utf8)
 }
 
 // MARK: - GeoJSON geometry
@@ -113,12 +116,86 @@ private enum GJGeometry {
     }
 }
 
-private func featureObject(_ geometry: GJGeometry, _ properties: [String: Any]) -> [String: Any] {
-    [
-        "type": "Feature",
-        "properties": properties,
-        "geometry": geometry.jsonObject()
-    ]
+/// Property bag that remembers first-seen key order. `JSONSerialization` writes
+/// a Swift dictionary in per-process hash order, so the app and Quick Look
+/// would otherwise show the same file's columns differently.
+private struct OrderedProperties {
+    private var keys: [String] = []
+    private var values: [String: Any] = [:]
+
+    subscript(key: String) -> Any? {
+        get { values[key] }
+        set {
+            if let newValue {
+                if values[key] == nil { keys.append(key) }
+                values[key] = newValue
+            } else {
+                remove(key)
+            }
+        }
+    }
+
+    mutating func remove(_ key: String) {
+        values.removeValue(forKey: key)
+        if let index = keys.firstIndex(of: key) { keys.remove(at: index) }
+    }
+
+    /// New keys append. A key that is already present keeps its place; the value updates.
+    mutating func merge(_ other: OrderedProperties) {
+        for key in other.keys {
+            self[key] = other.values[key]
+        }
+    }
+
+    /// Placemark `name` and `description` lead. ExtendedData keeps document order after them.
+    mutating func pinNameAndDescription() {
+        var ordered: [String] = []
+        if values["name"] != nil { ordered.append("name") }
+        if values["description"] != nil { ordered.append("description") }
+        ordered.append(contentsOf: keys.filter { $0 != "name" && $0 != "description" })
+        keys = ordered
+    }
+
+    func jsonText() -> String? {
+        var parts: [String] = []
+        parts.reserveCapacity(keys.count)
+        for key in keys {
+            guard let value = values[key],
+                  let name = jsonScalar(key),
+                  let encoded = jsonScalar(value) else { return nil }
+            parts.append("\(name):\(encoded)")
+        }
+        return "{\(parts.joined(separator: ","))}"
+    }
+}
+
+private struct GJFeature {
+    var geometry: GJGeometry
+    var properties: OrderedProperties
+
+    func jsonText() -> String? {
+        guard let properties = properties.jsonText(),
+              let geometry = jsonObjectText(geometry.jsonObject()) else { return nil }
+        return "{\"type\":\"Feature\",\"properties\":\(properties),\"geometry\":\(geometry)}"
+    }
+}
+
+private func featureObject(_ geometry: GJGeometry, _ properties: OrderedProperties) -> GJFeature {
+    GJFeature(geometry: geometry, properties: properties)
+}
+
+/// One JSON value, without the array brackets `JSONSerialization` needs to accept a scalar.
+private func jsonScalar(_ value: Any) -> String? {
+    guard let data = try? JSONSerialization.data(withJSONObject: [value]),
+          let text = String(data: data, encoding: .utf8),
+          text.first == "[", text.last == "]" else { return nil }
+    return String(text.dropFirst().dropLast())
+}
+
+private func jsonObjectText(_ object: Any) -> String? {
+    guard let data = try? JSONSerialization.data(withJSONObject: object),
+          let text = String(data: data, encoding: .utf8) else { return nil }
+    return text
 }
 
 /// `collapseSingle` keeps one Point, LineString, or Polygon as that type.
@@ -237,7 +314,7 @@ private final class KMLElement {
     let name: String
     let attributes: [String: String]
     var text = ""
-    var properties: [String: Any] = [:]
+    var properties = OrderedProperties()
     var geometries: [GJGeometry] = []
     var positions: [[Double]] = []
     var outerRing: [[Double]]?
@@ -252,11 +329,11 @@ private final class KMLElement {
 
 private final class KMLConverter: NSObject, XMLParserDelegate {
     private(set) var failed = false
-    private var features: [[String: Any]] = []
+    private var features: [GJFeature] = []
     private var stack: [KMLElement] = []
     private var suppress = 0
 
-    static func features(in data: Data) -> [[String: Any]]? {
+    static func features(in data: Data) -> [GJFeature]? {
         let converter = KMLConverter()
         guard parseXML(data, delegate: converter), !converter.failed else { return nil }
         return converter.features
@@ -326,10 +403,10 @@ private final class KMLConverter: NSObject, XMLParserDelegate {
             var incoming = frame.properties
             // The placemark's own name and description win over ExtendedData.
             if parent.name == "Placemark" {
-                if parent.properties["name"] != nil { incoming.removeValue(forKey: "name") }
-                if parent.properties["description"] != nil { incoming.removeValue(forKey: "description") }
+                if parent.properties["name"] != nil { incoming.remove("name") }
+                if parent.properties["description"] != nil { incoming.remove("description") }
             }
-            parent.properties.merge(incoming) { _, new in new }
+            parent.properties.merge(incoming)
         case "coordinates":
             parent?.positions.append(contentsOf: parseKMLCoordinates(frame.text))
         case "coord":
@@ -382,6 +459,7 @@ private final class KMLConverter: NSObject, XMLParserDelegate {
             }
         case "Placemark":
             guard let geometry = placemarkGeometry(frame.geometries) else { return }
+            frame.properties.pinNameAndDescription()
             features.append(featureObject(geometry, frame.properties))
         default:
             break
@@ -401,7 +479,7 @@ private final class GPXElement {
     let name: String
     let attributes: [String: String]
     var text = ""
-    var properties: [String: Any] = [:]
+    var properties = OrderedProperties()
     var ele: String?
     var time: String?
     var points: [[Double]] = []
@@ -415,10 +493,10 @@ private final class GPXElement {
 
 private final class GPXConverter: NSObject, XMLParserDelegate {
     private(set) var failed = false
-    private var features: [[String: Any]] = []
+    private var features: [GJFeature] = []
     private var stack: [GPXElement] = []
 
-    static func features(in data: Data) -> [[String: Any]]? {
+    static func features(in data: Data) -> [GJFeature]? {
         let converter = GPXConverter()
         guard parseXML(data, delegate: converter), !converter.failed else { return nil }
         return converter.features
@@ -465,10 +543,16 @@ private final class GPXConverter: NSObject, XMLParserDelegate {
         case "ele":
             if let parent, parent.name == "wpt" || parent.name == "rtept" || parent.name == "trkpt" {
                 parent.ele = frame.text
+                if parent.name == "wpt", let value = trimmed(frame.text) {
+                    parent.properties["ele"] = Double(value) ?? value
+                }
             }
         case "time":
             if let parent, parent.name == "wpt" || parent.name == "rtept" || parent.name == "trkpt" {
                 parent.time = frame.text
+                if parent.name == "wpt", let value = trimmed(frame.text) {
+                    parent.properties["time"] = value
+                }
             }
         case "name", "desc", "type":
             guard let parent, parent.name == "wpt" || parent.name == "rte" || parent.name == "trk",
@@ -476,14 +560,7 @@ private final class GPXConverter: NSObject, XMLParserDelegate {
             parent.properties[frame.name] = value
         case "wpt":
             guard let position = gpxPosition(frame.attributes, ele: frame.ele) else { return }
-            var properties = frame.properties
-            if let ele = trimmed(frame.ele ?? "") {
-                properties["ele"] = Double(ele) ?? ele
-            }
-            if let time = trimmed(frame.time ?? "") {
-                properties["time"] = time
-            }
-            features.append(featureObject(.point(position), properties))
+            features.append(featureObject(.point(position), frame.properties))
         case "rtept", "trkpt":
             if let parent, let position = gpxPosition(frame.attributes, ele: frame.ele) {
                 parent.points.append(position)

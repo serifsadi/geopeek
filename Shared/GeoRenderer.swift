@@ -1195,7 +1195,8 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
           '&#x2009;feature' + (META.featureCount !== 1 ? 's' : '') + '</div>' +
           (typeNames ? '<div class="stats-types">' + esc(typeNames) + '</div>' : '') +
           (META.vertexCount > 0 ? '<div class="stats-vertices">' +
-            META.vertexCount.toLocaleString() + '&#x2009;vertices</div>' : '');
+            META.vertexCount.toLocaleString() + '&#x2009;' +
+            (META.vertexCount === 1 ? 'vertex' : 'vertices') + '</div>' : '');
 
         var isDark      = window.matchMedia('(prefers-color-scheme: dark)').matches;
         var bgColor     = isDark ? '#1c1c1e' : '#f2f2f7';
@@ -1512,7 +1513,7 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
           }
           // Show spinner, defer heavy work so the UI updates first
           el.innerHTML = '<div id="table-loading"><div class="spinner"></div>Loading ' +
-            features.length.toLocaleString() + ' features\\u2026</div>';
+            features.length.toLocaleString() + ' feature' + (features.length !== 1 ? 's' : '') + '\\u2026</div>';
           tableBuilt = true;
           setTimeout(function() {
             var allKeys = [], ks = {};

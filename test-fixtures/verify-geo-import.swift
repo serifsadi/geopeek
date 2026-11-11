@@ -102,6 +102,7 @@ func run() throws {
         return
     }
     checkGPX(gpxFeatures, source: gpxJSON)
+    checkPropertyOrder(kml: kmlJSON, gpx: gpxJSON)
 
     checkEmptyAndMalformed()
     checkZipSelection()
@@ -459,6 +460,151 @@ func checkLargeKML() {
 func importedFeatures(_ data: Data, _ kind: GeoImportKind) -> [[String: Any]]? {
     guard let json = geoJSONData(from: data, kind: kind) else { return nil }
     return featureList(in: json)
+}
+
+func checkPropertyOrder(kml: Data, gpx: Data) {
+    let kmlKeys = propertyKeyOrders(in: kml)
+    check(kmlKeys.first == ["name", "description", "year", "code"],
+          "Park property order \(kmlKeys.first ?? [])")
+
+    let extendedFirst = """
+    <kml><Placemark>
+      <ExtendedData>
+        <Data name="rank"><value>1</value></Data>
+        <Data name="cc"><value>qa</value></Data>
+        <Data name="data"><value>87600</value></Data>
+      </ExtendedData>
+      <name>Qatar</name>
+      <description>State</description>
+      <Point><coordinates>51.5,25.3</coordinates></Point>
+    </Placemark></kml>
+    """
+    guard let extended = geoJSONData(from: Data(extendedFirst.utf8), kind: .kml) else {
+        fail("ExtendedData-before-name KML did not convert")
+        return
+    }
+    check(propertyKeyOrders(in: extended) == [["name", "description", "rank", "cc", "data"]],
+          "KML keys should be name, description, then ExtendedData order \(propertyKeyOrders(in: extended))")
+
+    let gpxKeys = propertyKeyOrders(in: gpx)
+    check(gpxKeys.first == ["ele", "time", "name", "desc", "type"],
+          "Trailhead property order \(gpxKeys.first ?? [])")
+    check(gpxKeys.count > 2 && gpxKeys[2] == ["name", "desc", "type"],
+          "Ridge property order \(gpxKeys.count > 2 ? gpxKeys[2] : [])")
+
+    let descFirst = """
+    <gpx><wpt lat="1" lon="2"><desc>First</desc><name>Second</name><type>Third</type></wpt></gpx>
+    """
+    guard let swapped = geoJSONData(from: Data(descFirst.utf8), kind: .gpx) else {
+        fail("GPX with desc before name did not convert")
+        return
+    }
+    check(propertyKeyOrders(in: swapped) == [["desc", "name", "type"]],
+          "GPX keys should follow element order \(propertyKeyOrders(in: swapped))")
+
+    let geo = #"{"type":"Feature","properties":{"z":1,"a":2,"m":3},"geometry":{"type":"Point","coordinates":[1,2]}}"#
+    switch renderFilePreview(data: Data(geo.utf8), fileName: "order.geojson") {
+    case .map(_, let script):
+        check(geoJSON(fromUserScript: script) == Data(geo.utf8),
+              "a .geojson file's property key order was rewritten")
+    case .fallback, .invalid:
+        fail("order.geojson did not render")
+    }
+}
+
+/// Property-key order of each feature, read from the JSON text.
+/// `JSONSerialization` dictionaries do not keep it.
+func propertyKeyOrders(in data: Data) -> [[String]] {
+    let text = String(decoding: data, as: UTF8.self)
+    var index = text.startIndex
+    var orders: [[String]] = []
+
+    func skipSpace() {
+        while index < text.endIndex, text[index].isWhitespace { index = text.index(after: index) }
+    }
+    func peek() -> Character? { index < text.endIndex ? text[index] : nil }
+    func eat(_ character: Character) -> Bool {
+        skipSpace()
+        guard peek() == character else { return false }
+        index = text.index(after: index)
+        return true
+    }
+    @discardableResult
+    func skipString() -> Bool {
+        guard peek() == "\"" else { return false }
+        index = text.index(after: index)
+        while index < text.endIndex {
+            let character = text[index]
+            index = text.index(after: index)
+            if character == "\\" {
+                guard index < text.endIndex else { return false }
+                index = text.index(after: index)
+                continue
+            }
+            if character == "\"" { return true }
+        }
+        return false
+    }
+    func readString() -> String? {
+        let start = index
+        guard skipString(),
+              let raw = String(text[start..<index]).data(using: .utf8),
+              let value = try? JSONSerialization.jsonObject(with: raw, options: [.fragmentsAllowed]) as? String else {
+            return nil
+        }
+        return value
+    }
+    func skipValue() -> Bool {
+        skipSpace()
+        guard let character = peek() else { return false }
+        if character == "\"" { return skipString() }
+        if character == "{" { return skipContainer("{", "}") }
+        if character == "[" { return skipContainer("[", "]") }
+        while index < text.endIndex {
+            let next = text[index]
+            if next == "," || next == "}" || next == "]" || next.isWhitespace { return true }
+            index = text.index(after: index)
+        }
+        return false
+    }
+    func skipContainer(_ open: Character, _ close: Character) -> Bool {
+        guard eat(open) else { return false }
+        skipSpace()
+        if eat(close) { return true }
+        while true {
+            guard skipValue() else { return false }
+            skipSpace()
+            if eat(close) { return true }
+            guard eat(",") else { return false }
+        }
+    }
+    func objectKeys() -> [String]? {
+        guard eat("{") else { return nil }
+        skipSpace()
+        if eat("}") { return [] }
+        var keys: [String] = []
+        while true {
+            skipSpace()
+            guard let key = readString(), eat(":"), skipValue() else { return nil }
+            keys.append(key)
+            skipSpace()
+            if eat("}") { return keys }
+            guard eat(",") else { return nil }
+        }
+    }
+
+    while index < text.endIndex {
+        if peek() == "\"" {
+            let start = index
+            guard skipString() else { break }
+            if text[start..<index] == "\"properties\"", eat(":"), let keys = objectKeys() {
+                orders.append(keys)
+            }
+            continue
+        }
+        index = text.index(after: index)
+    }
+    return orders
 }
 
 func checkEmptyAndMalformed() {
