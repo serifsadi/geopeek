@@ -46,27 +46,56 @@ func isSupportedDocument(_ url: URL) -> Bool {
     return GeoImportKind(fileName: url.lastPathComponent) != nil
 }
 
-/// A FeatureCollection for `data`, or nil when the file is empty or not valid for `kind`.
+/// FeatureCollection bytes, a valid KML/KMZ with nothing GeoPeek can draw, or not valid.
+enum GeoImportResult {
+    case geoJSON(Data)
+    /// Parse succeeded, a KML root is present, there are no supported features,
+    /// and the file has at least one NetworkLink or image overlay.
+    case nothingToPreview
+    case invalid
+}
+
+/// A FeatureCollection for `data`, or nil when the file is empty, not valid for `kind`,
+/// or only contains network links and image overlays.
 func geoJSONData(from data: Data, kind: GeoImportKind) -> Data? {
-    let features: [GJFeature]?
+    guard case .geoJSON(let encoded) = importGeoData(data, kind: kind) else { return nil }
+    return encoded
+}
+
+func importGeoData(_ data: Data, kind: GeoImportKind) -> GeoImportResult {
     switch kind {
     case .kml:
-        features = KMLConverter.features(in: data)
+        return kmlImportResult(data)
     case .kmz:
-        guard let kml = kmlDocument(in: data) else { return nil }
-        features = KMLConverter.features(in: kml)
+        guard let kml = kmlDocument(in: data) else { return .invalid }
+        return kmlImportResult(kml)
     case .gpx:
-        features = GPXConverter.features(in: data)
+        guard let features = GPXConverter.features(in: data) else { return .invalid }
+        return encodeFeatures(features)
     }
-    guard let features, !features.isEmpty else { return nil }
+}
+
+private func kmlImportResult(_ data: Data) -> GeoImportResult {
+    switch KMLConverter.read(data) {
+    case .features(let features):
+        return encodeFeatures(features)
+    case .nothingToPreview:
+        return .nothingToPreview
+    case .invalid:
+        return .invalid
+    }
+}
+
+private func encodeFeatures(_ features: [GJFeature]) -> GeoImportResult {
+    guard !features.isEmpty else { return .invalid }
     var encoded: [String] = []
     encoded.reserveCapacity(features.count)
     for feature in features {
-        guard let text = feature.jsonText() else { return nil }
+        guard let text = feature.jsonText() else { return .invalid }
         encoded.append(text)
     }
     let collection = "{\"type\":\"FeatureCollection\",\"features\":[\(encoded.joined(separator: ","))]}"
-    return Data(collection.utf8)
+    return .geoJSON(Data(collection.utf8))
 }
 
 // MARK: - GeoJSON geometry
@@ -310,6 +339,24 @@ private let kmlIgnored: Set<String> = [
     "NetworkLink", "GroundOverlay", "ScreenOverlay", "PhotoOverlay", "Style", "StyleMap"
 ]
 
+/// These are valid KML. A file that has one and no supported geometry is not broken.
+private let kmlUnpreviewable: Set<String> = [
+    "NetworkLink", "GroundOverlay", "ScreenOverlay", "PhotoOverlay"
+]
+
+/// Document element that means the file is KML when it has no `<kml>` wrapper.
+/// A KMZ root is sometimes a bare NetworkLink.
+private let kmlDocumentElements: Set<String> = [
+    "kml", "Document", "Folder", "Placemark",
+    "NetworkLink", "GroundOverlay", "ScreenOverlay", "PhotoOverlay"
+]
+
+private enum KMLRead {
+    case features([GJFeature])
+    case nothingToPreview
+    case invalid
+}
+
 private final class KMLElement {
     let name: String
     let attributes: [String: String]
@@ -332,11 +379,17 @@ private final class KMLConverter: NSObject, XMLParserDelegate {
     private var features: [GJFeature] = []
     private var stack: [KMLElement] = []
     private var suppress = 0
+    private var sawKMLRoot = false
+    private var sawUnpreviewable = false
 
-    static func features(in data: Data) -> [GJFeature]? {
+    static func read(_ data: Data) -> KMLRead {
         let converter = KMLConverter()
-        guard parseXML(data, delegate: converter), !converter.failed else { return nil }
-        return converter.features
+        guard parseXML(data, delegate: converter), !converter.failed else { return .invalid }
+        if !converter.features.isEmpty { return .features(converter.features) }
+        // Parse succeeded, nothing supported was drawn, and the file is KML
+        // that only links out or overlays an image.
+        if converter.sawKMLRoot && converter.sawUnpreviewable { return .nothingToPreview }
+        return .invalid
     }
 
     func parser(_ parser: XMLParser,
@@ -345,6 +398,12 @@ private final class KMLConverter: NSObject, XMLParserDelegate {
                 qualifiedName qName: String?,
                 attributes attributeDict: [String: String] = [:]) {
         let name = xmlLocalName(elementName)
+        if name == "kml" || (stack.isEmpty && kmlDocumentElements.contains(name)) {
+            sawKMLRoot = true
+        }
+        if kmlUnpreviewable.contains(name) {
+            sawUnpreviewable = true
+        }
         if suppress > 0 || kmlIgnored.contains(name) {
             suppress += 1
         }
@@ -619,13 +678,26 @@ private func gpxPosition(_ attributes: [String: String], ele: String?) -> [Doubl
 
 // MARK: - KMZ
 
+/// Root `doc.kml`, then the first root `.kml`. When the archive has neither,
+/// a `doc.kml` at any depth, then the first `.kml` anywhere.
 private func kmlDocument(in kmz: Data) -> Data? {
     guard let entries = ZipArchive.entries(in: kmz) else { return nil }
     let root = entries.filter { isZipRoot($0.name) }
     if let document = root.first(where: { $0.name == "doc.kml" }) {
         return document.data
     }
-    return root.first(where: { $0.name.lowercased().hasSuffix(".kml") })?.data
+    if let document = root.first(where: { $0.name.lowercased().hasSuffix(".kml") }) {
+        return document.data
+    }
+    if let document = entries.first(where: { zipFileName($0.name) == "doc.kml" }) {
+        return document.data
+    }
+    return entries.first(where: { $0.name.lowercased().hasSuffix(".kml") })?.data
+}
+
+private func zipFileName(_ path: String) -> String {
+    guard let slash = path.lastIndex(of: "/") else { return path }
+    return String(path[path.index(after: slash)...])
 }
 
 private func isZipRoot(_ name: String) -> Bool {

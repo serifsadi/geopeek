@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A KML or KMZ file that only contains network links or image overlays shows Nothing to Preview in the app and in Quick Look, and opening it is added to Recents. An empty or broken file still shows Not Valid and is left out of Recents.
+- A KMZ file whose only KML document is inside a folder is opened. A KML file at the root of the archive is still preferred, and `doc.kml` is preferred over other root KML files.
 - KML, KMZ, and GPX open in the app and in Quick Look. Each file is converted to GeoJSON and drawn with the existing map, table, and stats. Finder thumbnails use the same GeoPeek icon. File > Open, drag and drop, Finder, and Recents accept the new types. GeoPeek is an alternate handler, so it does not become the default app.
 - MapLibre GL JS is 5.24.0. The attribution control starts as the info button. Clicking it shows the MapLibre, OpenFreeMap, OpenMapTiles, and OpenStreetMap credits.
 - Opening a file from Finder opens that file in its own window. Other windows keep their files, and restored windows come back with their own files.
