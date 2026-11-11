@@ -106,6 +106,7 @@ func run() throws {
 
     checkEmptyAndMalformed()
     checkZipSelection()
+    checkNothingToPreview()
     checkCDATA()
     checkExtendedDataName()
     checkSinglePointGPX()
@@ -507,7 +508,7 @@ func checkPropertyOrder(kml: Data, gpx: Data) {
     case .map(_, let script):
         check(geoJSON(fromUserScript: script) == Data(geo.utf8),
               "a .geojson file's property key order was rewritten")
-    case .fallback, .invalid:
+    case .fallback, .invalid, .nothingToPreview:
         fail("order.geojson did not render")
     }
 }
@@ -646,7 +647,105 @@ func checkZipSelection() {
     check(featureName(in: firstRoot) == "Other", "without doc.kml the first root kml is used")
 
     let onlyNested = storedZip([("files/inside.kml", nested)])
-    check(geoJSONData(from: onlyNested, kind: .kmz) == nil, "a nested kml is not a root document")
+    check(featureName(in: onlyNested) == "Nested", "a KMZ whose only kml is nested should be read")
+
+    let nestedDoc = storedZip([
+        ("files/other.kml", other),
+        ("dir/sub/doc.kml", doc)
+    ])
+    check(featureName(in: nestedDoc) == "Document", "a nested doc.kml wins over an earlier nested kml")
+
+    let firstNested = storedZip([
+        ("files/a.kml", other),
+        ("files/b.kml", doc)
+    ])
+    check(featureName(in: firstNested) == "Other", "without doc.kml the first nested kml is used")
+
+    // A root kml still wins even when a nested doc.kml comes first in the archive.
+    let rootWins = storedZip([
+        ("files/doc.kml", doc),
+        ("b.kml", other)
+    ])
+    check(featureName(in: rootWins) == "Other", "a root kml wins over a nested doc.kml")
+}
+
+func checkNothingToPreview() {
+    let overlays = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+      <NetworkLink><Link><href>https://example.com/a.kml</href></Link></NetworkLink>
+      <GroundOverlay><Icon><href>https://example.com/a.png</href></Icon></GroundOverlay>
+      <ScreenOverlay><Icon><href>https://example.com/b.png</href></Icon></ScreenOverlay>
+      <PhotoOverlay><Icon><href>https://example.com/c.png</href></Icon></PhotoOverlay>
+    </Document></kml>
+    """
+    let bareLink = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <NetworkLink id="link"><Link><href>Level1/doc.kml</href></Link></NetworkLink>
+    """
+    let documentLink = """
+    <?xml version="1.0"?><Document><NetworkLink><Link><href>https://example.com/a.kml</href></Link></NetworkLink></Document>
+    """
+    let mixed = """
+    <?xml version="1.0"?><kml><Document>
+      <Placemark><name>Pin</name><Point><coordinates>1,2</coordinates></Point></Placemark>
+      <GroundOverlay><Icon><href>https://example.com/a.png</href></Icon></GroundOverlay>
+      <NetworkLink><Link><href>https://example.com/a.kml</href></Link></NetworkLink>
+    </Document></kml>
+    """
+    let styleOnly = """
+    <?xml version="1.0"?><kml><Document><Style><IconStyle/></Style></Document></kml>
+    """
+
+    checkNothingPage(Data(overlays.utf8), "overlays.kml", "KML")
+    checkNothingPage(Data(bareLink.utf8), "bare-link.kml", "KML")
+    checkNothingPage(Data(documentLink.utf8), "document-link.kml", "KML")
+    checkNothingPage(storedZip([("doc.kml", Data(overlays.utf8))]), "overlays.kmz", "KMZ")
+    checkNothingPage(storedZip([("files/doc.kml", Data(overlays.utf8))]), "nested-overlays.kmz", "KMZ")
+
+    let nestedPoint = Data("<?xml version=\"1.0\"?><kml><Placemark><name>Nested</name><Point><coordinates>5,6</coordinates></Point></Placemark></kml>".utf8)
+    let rootLink = storedZip([
+        ("doc.kml", Data(bareLink.utf8)),
+        ("files/doc.kml", nestedPoint)
+    ])
+    checkNothingPage(rootLink, "root-link.kmz", "KMZ")
+    check(featureName(in: rootLink) == nil, "a root NetworkLink should not fall through to a nested placemark")
+
+    switch renderFilePreview(data: Data(mixed.utf8), fileName: "mixed.kml") {
+    case .map(_, let script):
+        guard let decoded = geoJSON(fromUserScript: script),
+              let list = featureList(in: decoded) else {
+            fail("mixed kml did not decode")
+            return
+        }
+        check(list.count == 1, "mixed kml feature count \(list.count)")
+        check((list.first?["properties"] as? [String: Any])?["name"] as? String == "Pin",
+              "mixed kml dropped the placemark")
+    case .fallback, .invalid, .nothingToPreview:
+        fail("mixed kml should render the map")
+    }
+
+    checkNotValid(Data(styleOnly.utf8), "style.kml", "KML")
+    checkNotValid(Data("<notkml><NetworkLink/></notkml>".utf8), "foreign.kml", "KML")
+    checkNotValid(Data("<kml><NetworkLink></kml>".utf8), "truncated-link.kml", "KML")
+    checkNotValid(Data("<?xml version=\"1.0\"?><kml><Document/></kml>".utf8), "empty-doc.kml", "KML")
+}
+
+func checkNothingPage(_ data: Data, _ fileName: String, _ format: String) {
+    guard case .nothingToPreview(let html) = renderFilePreview(data: data, fileName: fileName) else {
+        fail("\(fileName) did not show Nothing to Preview")
+        return
+    }
+    let body = "This \(format) file only contains network links or image overlays, which GeoPeek doesn't show yet."
+    let other = format == "KML" ? "KMZ" : "KML"
+    check(html.contains("Nothing to Preview"), "\(fileName) is missing the title")
+    check(html.contains(body), "\(fileName) is missing the body")
+    check(!html.contains("This \(other) file"), "\(fileName) uses the \(other) sentence")
+    check(!html.contains("Not Valid"), "\(fileName) uses the Not Valid page")
+    check(!html.contains("<script"), "\(fileName) page has a script")
+    check(html.contains("class=\"card\""), "\(fileName) lost the status card")
+    let kind: GeoImportKind = format == "KMZ" ? .kmz : .kml
+    check(geoJSONData(from: data, kind: kind) == nil, "\(fileName) produced GeoJSON")
 }
 
 func featureName(in kmz: Data) -> String? {
@@ -667,7 +766,7 @@ func checkRenderHandoff(kml: Data, gpx: Data, kmz: Data) throws {
             return
         }
         check(meta.featureCount == 11, "rendered KML featureCount \(meta.featureCount)")
-    case .fallback, .invalid:
+    case .fallback, .invalid, .nothingToPreview:
         fail("sample.kml used the fallback page")
     }
 
@@ -678,14 +777,14 @@ func checkRenderHandoff(kml: Data, gpx: Data, kmz: Data) throws {
             return
         }
         check(meta.featureCount == 11, "rendered KMZ featureCount \(meta.featureCount)")
-    case .fallback, .invalid:
+    case .fallback, .invalid, .nothingToPreview:
         fail("sample.KMZ used the fallback page")
     }
 
     switch renderFilePreview(data: gpx, fileName: "sample.gpx") {
     case .map:
         break
-    case .fallback, .invalid:
+    case .fallback, .invalid, .nothingToPreview:
         fail("sample.gpx used the fallback page")
     }
 
@@ -697,7 +796,7 @@ func checkRenderHandoff(kml: Data, gpx: Data, kmz: Data) throws {
     case .map(let html, let script):
         check(!html.contains("alert(1)"), "hostile KML description reached the map HTML")
         check(!script.contains("alert(1)") && !script.contains("<"), "hostile KML description broke the user script")
-    case .fallback, .invalid:
+    case .fallback, .invalid, .nothingToPreview:
         fail("hostile.kml did not render")
     }
 
@@ -707,7 +806,7 @@ func checkRenderHandoff(kml: Data, gpx: Data, kmz: Data) throws {
         check(html.contains("maplibregl"), "point.json no longer renders the map")
         check(!html.contains("Not Valid KML") && !html.contains("Not valid JSON"),
               "point.json was reported invalid")
-    case .fallback, .invalid:
+    case .fallback, .invalid, .nothingToPreview:
         fail("point.json used the fallback page")
     }
 
@@ -717,14 +816,14 @@ func checkRenderHandoff(kml: Data, gpx: Data, kmz: Data) throws {
         check(html.contains("Not valid JSON."), "invalid.json lost the JSON parse line")
         check(!html.contains("Not Valid KML") && !html.contains("Not Valid GeoJSON"),
               "invalid.json used the format error card")
-    case .map, .invalid:
+    case .map, .invalid, .nothingToPreview:
         fail("invalid.json rendered a map or the format error card")
     }
 
     switch renderFilePreview(data: point, fileName: "point.kml") {
     case .invalid(let html):
         check(html.contains("Not Valid KML"), "GeoJSON bytes named .kml should fail as KML")
-    case .map, .fallback:
+    case .map, .fallback, .nothingToPreview:
         fail("point.kml was parsed as GeoJSON")
     }
 }

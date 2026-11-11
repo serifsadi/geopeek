@@ -493,8 +493,9 @@ struct MapView: NSViewRepresentable {
                     let preview = renderFilePreview(data: data, fileName: name)
                     // Finder, Open, drop, and Open Recent all arrive here.
                     // The Not Valid page is not an open, so it is left out of Recents.
+                    // Nothing to Preview is a real file, so it is noted.
                     switch preview {
-                    case .map, .fallback:
+                    case .map, .fallback, .nothingToPreview:
                         RecentFiles.shared.note(url)
                     case .invalid:
                         break
@@ -507,7 +508,7 @@ struct MapView: NSViewRepresentable {
                             forMainFrameOnly: true
                         ))
                         wv.loadHTMLString(html, baseURL: Coordinator.baseURL)
-                    case .fallback(let html), .invalid(let html):
+                    case .fallback(let html), .invalid(let html), .nothingToPreview(let html):
                         wv.loadHTMLString(html, baseURL: Coordinator.baseURL)
                     }
                 }

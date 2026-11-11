@@ -682,7 +682,7 @@ case .map(let html, let script):
     check(!html.contains("Not valid JSON") && !html.contains("Not Valid GeoJSON"),
           "GeoJSON .json file rendered the error card")
     check(script.hasPrefix("window.__GEO__="), "GeoJSON .json file is missing the user script")
-case .fallback, .invalid:
+case .fallback, .invalid, .nothingToPreview:
     fail("point.json was shown as plain JSON")
 }
 

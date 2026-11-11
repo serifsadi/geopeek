@@ -319,7 +319,42 @@ func openMapLinkInBrowser(_ url: URL) {
 /// JSON that is not GeoJSON, uses `makeJSONFallbackHTML` instead.
 func makeErrorHTML(format: String = "GeoJSON") -> String {
     let name = escapeHTMLText(format)
-    return """
+    return statusCardHTML(
+        title: "Not Valid \(name)",
+        message: "This file doesn't contain recognisable \(name) data and cannot be previewed."
+    )
+}
+
+/// Same card as the Not Valid page. The file parsed; GeoPeek has nothing to draw.
+func makeNothingToPreviewHTML(kind: GeoImportKind) -> String {
+    let title = NSLocalizedString(
+        "Nothing to Preview",
+        comment: "Heading on the page shown when a KML or KMZ file only contains network links or image overlays"
+    )
+    switch kind {
+    case .kml:
+        return statusCardHTML(
+            title: title,
+            message: NSLocalizedString(
+                "This KML file only contains network links or image overlays, which GeoPeek doesn't show yet.",
+                comment: "Body text on the page shown when a KML file only contains network links or image overlays"
+            )
+        )
+    case .kmz:
+        return statusCardHTML(
+            title: title,
+            message: NSLocalizedString(
+                "This KMZ file only contains network links or image overlays, which GeoPeek doesn't show yet.",
+                comment: "Body text on the page shown when a KMZ file only contains network links or image overlays"
+            )
+        )
+    case .gpx:
+        return makeErrorHTML(format: kind.displayName)
+    }
+}
+
+private func statusCardHTML(title: String, message: String) -> String {
+    """
     <!DOCTYPE html>
     <html>
     <head>
@@ -366,8 +401,8 @@ func makeErrorHTML(format: String = "GeoJSON") -> String {
             <circle cx="12" cy="17" r="0.5" fill="currentColor" stroke="none"/>
           </svg>
         </div>
-        <h1>Not Valid \(name)</h1>
-        <p class="sub">This file doesn't contain recognisable \(name) data and cannot be previewed.</p>
+        <h1>\(title)</h1>
+        <p class="sub">\(message)</p>
       </div>
     </body>
     </html>
@@ -386,6 +421,8 @@ enum RenderedPreview {
     case fallback(html: String)
     /// The Not Valid page. An empty or malformed file did not open.
     case invalid(html: String)
+    /// Valid KML or KMZ that only has network links or image overlays.
+    case nothingToPreview(html: String)
 }
 
 /// Map when `data` is GeoJSON; otherwise the read-only fallback. The decision
@@ -409,15 +446,20 @@ func renderPreview(data: Data,
 
 /// GeoJSON and JSON keep `renderPreview`. KML, KMZ, and GPX are converted
 /// first. An empty or malformed import uses the same not-valid page, named
-/// for that format.
+/// for that format. A KML or KMZ file that only has network links or image
+/// overlays uses the nothing-to-preview page.
 func renderFilePreview(data: Data,
                        fileName: String,
                        maxFallbackBytes: Int = jsonFallbackMaxBytes) -> RenderedPreview {
     if let kind = GeoImportKind(fileName: fileName) {
-        guard let geoJSON = geoJSONData(from: data, kind: kind) else {
+        switch importGeoData(data, kind: kind) {
+        case .geoJSON(let geoJSON):
+            return renderPreview(data: geoJSON, fileName: fileName, maxFallbackBytes: maxFallbackBytes)
+        case .nothingToPreview:
+            return .nothingToPreview(html: makeNothingToPreviewHTML(kind: kind))
+        case .invalid:
             return .invalid(html: makeErrorHTML(format: kind.displayName))
         }
-        return renderPreview(data: geoJSON, fileName: fileName, maxFallbackBytes: maxFallbackBytes)
     }
     return renderPreview(data: data, fileName: fileName, maxFallbackBytes: maxFallbackBytes)
 }

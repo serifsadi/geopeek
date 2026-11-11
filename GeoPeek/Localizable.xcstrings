@@ -77,6 +77,39 @@
     },
     "You can also press **Space** on a GeoJSON, KML, KMZ, or GPX file in Finder to preview it." : {
 
+    },
+    "Nothing to Preview" : {
+      "comment" : "Heading on the page shown when a KML or KMZ file only contains network links or image overlays",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nothing to Preview"
+          }
+        }
+      }
+    },
+    "This KML file only contains network links or image overlays, which GeoPeek doesn't show yet." : {
+      "comment" : "Body text on the page shown when a KML file only contains network links or image overlays",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This KML file only contains network links or image overlays, which GeoPeek doesn't show yet."
+          }
+        }
+      }
+    },
+    "This KMZ file only contains network links or image overlays, which GeoPeek doesn't show yet." : {
+      "comment" : "Body text on the page shown when a KMZ file only contains network links or image overlays",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This KMZ file only contains network links or image overlays, which GeoPeek doesn't show yet."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
