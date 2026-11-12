@@ -1762,8 +1762,10 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
               ? '<p class="no-props">No properties</p>'
               : '<table class="prop-table">' + keys.map(function(k) {
                   var v = props[k];
+                  // MapLibre 6 returns nested property values as objects.
+                  var shown = (v !== null && typeof v === 'object') ? JSON.stringify(v) : v;
                   return '<tr><td class="prop-key">' + esc(k) +
-                         '</td><td class="prop-val">' + esc(v === null ? '\\u2014' : v) +
+                         '</td><td class="prop-val">' + esc(shown === null ? '\\u2014' : shown) +
                          '</td></tr>';
                 }).join('') + '</table>';
 

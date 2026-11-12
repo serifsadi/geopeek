@@ -489,7 +489,7 @@
 				CODE_SIGN_ENTITLEMENTS = GeoPeek/GeoPeek.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
@@ -525,7 +525,7 @@
 				CODE_SIGN_ENTITLEMENTS = GeoPeek/GeoPeek.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -560,7 +560,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_ENTITLEMENTS = GeoPeekExtension/GeoPeekExtension.entitlements;
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = 7W797GT86L;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
@@ -606,7 +606,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_ENTITLEMENTS = GeoPeekExtension/GeoPeekExtension.entitlements;
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = 7W797GT86L;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -652,7 +652,7 @@
 			buildSettings = {
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = 7W797GT86L;
 				CODE_SIGN_ENTITLEMENTS = GeoPeekThumbnailExtension/GeoPeekThumbnailExtension.entitlements;
 				ENABLE_APP_SANDBOX = YES;
@@ -689,7 +689,7 @@
 			buildSettings = {
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = 7W797GT86L;
 				CODE_SIGN_ENTITLEMENTS = GeoPeekThumbnailExtension/GeoPeekThumbnailExtension.entitlements;
 				ENABLE_APP_SANDBOX = YES;
