@@ -239,7 +239,9 @@ struct WelcomeView: View {
             .controlSize(.small)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.top, 8)
+            // 8pt of bottom padding sits in the window corner and clips the label.
+            .padding(.bottom, 16)
         }
         .frame(width: 280, alignment: .leading)
         .frame(maxHeight: .infinity, alignment: .top)
