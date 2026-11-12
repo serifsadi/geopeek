@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Remove from Recents removes that file only. The other recent files stay in the same order, with the same open times, in File > Open Recent and on the welcome screen. Clear Recents still clears the whole list.
+- The welcome hint about pressing Space on a file in Finder wraps, so the whole sentence is visible.
 - GeoPeek requires macOS 15.0 or later.
 - Windows are not restored. Opening GeoPeek shows the welcome window. Opening a file from Finder shows that file. Windows left open by Quit or a crash stay closed, including state saved by an older build.
 - A KML or KMZ file that only contains network links or image overlays shows Nothing to Preview in the app and in Quick Look, and opening it is added to Recents. An empty or broken file still shows Not Valid and is left out of Recents.

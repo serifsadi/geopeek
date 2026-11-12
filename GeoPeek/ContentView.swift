@@ -201,7 +201,9 @@ struct WelcomeView: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
+                .lineLimit(2)
                 .frame(maxWidth: 340)
+                .fixedSize(horizontal: false, vertical: true)
 
             Spacer()
         }
