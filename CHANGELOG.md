@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
 - Clear Recents keeps the same space under the divider and has more space above the window's bottom edge, so the label clears the rounded corner.
 - Remove from Recents removes that file only. The other recent files stay in the same order, with the same open times, in File > Open Recent and on the welcome screen. Clear Recents still clears the whole list.
