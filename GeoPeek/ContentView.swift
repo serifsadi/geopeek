@@ -246,7 +246,7 @@ struct WelcomeView: View {
         .frame(maxHeight: .infinity, alignment: .top)
         // Outside the max-height frame, so the scroll view shrinks and this
         // inset stays on screen, above the window corner.
-        .padding(.bottom, 24)
+        .padding(.bottom, 20)
     }
 
     private var dropZone: some View {
