@@ -228,6 +228,7 @@ struct WelcomeView: View {
                 }
                 .padding(.horizontal, 6)
             }
+            .frame(maxHeight: .infinity)
             Divider()
             Button {
                 RecentFiles.shared.clear()
@@ -240,11 +241,12 @@ struct WelcomeView: View {
             .foregroundStyle(.secondary)
             .padding(.horizontal, 14)
             .padding(.top, 8)
-            // 8pt of bottom padding sits in the window corner and clips the label.
-            .padding(.bottom, 16)
         }
         .frame(width: 280, alignment: .leading)
         .frame(maxHeight: .infinity, alignment: .top)
+        // Outside the max-height frame, so the scroll view shrinks and this
+        // inset stays on screen, above the window corner.
+        .padding(.bottom, 24)
     }
 
     private var dropZone: some View {
