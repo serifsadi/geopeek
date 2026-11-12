@@ -161,13 +161,30 @@ final class RecentFiles {
         refresh()
     }
 
-    /// Document recents have no per-item remove, so the list is cleared and the others are noted again, oldest first.
+    /// Document recents have no per-item remove, so the list is cleared and the
+    /// kept URLs are noted again, oldest first. The last note is the newest and
+    /// ends up at the top.
+    ///
+    /// `clearRecentDocuments(_:)` leaves `recentDocumentURLs` empty. The next
+    /// `noteNewRecentDocumentURL(_:)` is the call that brings that empty list
+    /// back, and the URL passed to it is not added. Every later note is added.
+    /// Noting oldest first makes the missing URL the oldest file, so Remove
+    /// from Recents also deletes the bottom row, in the welcome list and in
+    /// File > Open Recent, including after relaunch. The list is read back.
+    /// When it is not the kept URLs, they are noted again. That first note has
+    /// already been consumed, so this pass inserts every URL, still oldest
+    /// first. Open dates of the kept files are left unchanged.
     func remove(_ url: URL) {
         let path = Self.key(for: url)
-        let remaining = NSDocumentController.shared.recentDocumentURLs.filter { Self.key(for: $0) != path }
-        NSDocumentController.shared.clearRecentDocuments(nil)
-        for item in remaining.reversed() {
-            Self.writeBookmark(item)
+        let controller = NSDocumentController.shared
+        let remaining = controller.recentDocumentURLs.filter { Self.key(for: $0) != path }
+        let wanted = remaining.map { Self.key(for: $0) }
+        controller.clearRecentDocuments(nil)
+        Self.noteOldestFirst(remaining)
+        // The first note was the oldest URL. If that note was not added, the
+        // native list is not the kept URLs, and the second pass puts it back.
+        if controller.recentDocumentURLs.map({ Self.key(for: $0) }) != wanted {
+            Self.noteOldestFirst(remaining)
         }
         var dates = Self.loadDates()
         dates.removeValue(forKey: path)
@@ -246,6 +263,12 @@ final class RecentFiles {
 
     private static func key(for url: URL) -> String {
         url.standardizedFileURL.path
+    }
+
+    private static func noteOldestFirst(_ urls: [URL]) {
+        for url in urls.reversed() {
+            writeBookmark(url)
+        }
     }
 
     private static func writeBookmark(_ url: URL) {

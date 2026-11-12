@@ -201,7 +201,9 @@ struct WelcomeView: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
+                .lineLimit(2)
                 .frame(maxWidth: 340)
+                .fixedSize(horizontal: false, vertical: true)
 
             Spacer()
         }
@@ -226,6 +228,7 @@ struct WelcomeView: View {
                 }
                 .padding(.horizontal, 6)
             }
+            .frame(maxHeight: .infinity)
             Divider()
             Button {
                 RecentFiles.shared.clear()
@@ -237,10 +240,13 @@ struct WelcomeView: View {
             .controlSize(.small)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.top, 8)
         }
         .frame(width: 280, alignment: .leading)
         .frame(maxHeight: .infinity, alignment: .top)
+        // Outside the max-height frame, so the scroll view shrinks and this
+        // inset stays on screen, above the window corner.
+        .padding(.bottom, 18)
     }
 
     private var dropZone: some View {
