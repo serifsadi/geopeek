@@ -102,8 +102,14 @@ private func geoJSONMeta(from root: [String: Any]) -> GeoJSONMeta? {
            let lng = (arr[0] as? NSNumber)?.doubleValue,
            let lat = (arr[1] as? NSNumber)?.doubleValue {
             meta.vertexCount += 1
-            if lng < minLng { minLng = lng }; if lng > maxLng { maxLng = lng }
-            if lat < minLat { minLat = lat }; if lat > maxLat { maxLat = lat }
+            // MapLibre rejects a latitude outside -90...90 or a longitude
+            // outside -180...180. Leave those positions out of the fit bounds.
+            if lng.isFinite, lat.isFinite, abs(lat) <= 90, abs(lng) <= 180 {
+                if lng < minLng { minLng = lng }
+                if lng > maxLng { maxLng = lng }
+                if lat < minLat { minLat = lat }
+                if lat > maxLat { maxLat = lat }
+            }
         } else {
             arr.forEach { walkCoords($0) }
         }
@@ -1540,7 +1546,11 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
           if (!f.geometry || !f.geometry.coordinates) return null;
           var n = 0, b = new maplibregl.LngLatBounds();
           (function walk(c) {
-            if (typeof c[0] === 'number') { b.extend([c[0], c[1]]); n++; }
+            if (typeof c[0] === 'number') {
+              if (isFinite(c[0]) && isFinite(c[1]) && c[1] >= -90 && c[1] <= 90 && c[0] >= -180 && c[0] <= 180) {
+                b.extend([c[0], c[1]]); n++;
+              }
+            }
             else c.forEach(walk);
           })(f.geometry.coordinates);
           return n ? b : null;

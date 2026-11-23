@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="GeoPeek fixtures">
+  <wpt lat="nan" lon="10">
+    <ele>NaN</ele>
+    <name>Bad</name>
+  </wpt>
+  <wpt lat="37.8" lon="-122.4">
+    <ele>NaN</ele>
+    <name>NoEle</name>
+  </wpt>
+  <wpt lat="1" lon="2">
+    <ele>12.5</ele>
+    <name>Good</name>
+  </wpt>
+  <wpt lat="95" lon="10">
+    <name>High</name>
+  </wpt>
+  <rte>
+    <name>Road</name>
+    <rtept lat="nan" lon="1"><ele>Infinity</ele></rtept>
+    <rtept lat="10" lon="20"/>
+    <rtept lat="11" lon="21"/>
+  </rte>
+  <trk>
+    <name>Ridge</name>
+    <trkseg>
+      <trkpt lat="inf" lon="3"><ele>infinity</ele></trkpt>
+      <trkpt lat="4" lon="5"><ele>1</ele></trkpt>
+      <trkpt lat="6" lon="7"><ele>2</ele></trkpt>
+    </trkseg>
+  </trk>
+</gpx>

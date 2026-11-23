@@ -215,16 +215,39 @@ private func featureObject(_ geometry: GJGeometry, _ properties: OrderedProperti
 
 /// One JSON value, without the array brackets `JSONSerialization` needs to accept a scalar.
 private func jsonScalar(_ value: Any) -> String? {
-    guard let data = try? JSONSerialization.data(withJSONObject: [value]),
+    guard let data = jsonData([value]),
           let text = String(data: data, encoding: .utf8),
           text.first == "[", text.last == "]" else { return nil }
     return String(text.dropFirst().dropLast())
 }
 
 private func jsonObjectText(_ object: Any) -> String? {
-    guard let data = try? JSONSerialization.data(withJSONObject: object),
+    guard let data = jsonData(object),
           let text = String(data: data, encoding: .utf8) else { return nil }
     return text
+}
+
+/// `JSONSerialization` raises an Objective-C exception on NaN and infinity.
+/// `try?` does not catch that, so a non-finite number is rejected first.
+private func jsonData(_ object: Any) -> Data? {
+    guard !containsNonFinite(object), JSONSerialization.isValidJSONObject(object) else { return nil }
+    return try? JSONSerialization.data(withJSONObject: object)
+}
+
+private func containsNonFinite(_ value: Any) -> Bool {
+    if value is String { return false }
+    if let number = value as? Double { return !number.isFinite }
+    if let number = value as? NSNumber { return !number.doubleValue.isFinite }
+    if let dictionary = value as? [String: Any] {
+        return dictionary.values.contains(where: containsNonFinite)
+    }
+    let mirror = Mirror(reflecting: value)
+    if mirror.displayStyle == .collection || mirror.displayStyle == .dictionary {
+        for child in mirror.children where containsNonFinite(child.value) {
+            return true
+        }
+    }
+    return false
 }
 
 /// `collapseSingle` keeps one Point, LineString, or Polygon as that type.
@@ -294,10 +317,9 @@ private func parseKMLCoordinates(_ text: String) -> [[Double]] {
             }
         }
         if components.count >= 2 {
-            if components.count >= 3 {
-                tuples.append([components[0], components[1], components[2]])
-            } else {
-                tuples.append([components[0], components[1]])
+            let altitude = components.count >= 3 ? components[2] : nil
+            if let position = wgs84Position(lon: components[0], lat: components[1], altitude: altitude) {
+                tuples.append(position)
             }
         } else if scanner.currentIndex == start {
             guard start < text.endIndex else { break }
@@ -314,6 +336,16 @@ private func parseDoubles(_ text: String) -> [Double] {
         values.append(value)
     }
     return values
+}
+
+/// Longitude and latitude have to be finite and inside the WGS84 range.
+/// A non-finite altitude is omitted, the same as a missing elevation.
+private func wgs84Position(lon: Double, lat: Double, altitude: Double?) -> [Double]? {
+    guard lon.isFinite, lat.isFinite, abs(lat) <= 90, abs(lon) <= 180 else { return nil }
+    if let altitude, altitude.isFinite {
+        return [lon, lat, altitude]
+    }
+    return [lon, lat]
 }
 
 // MARK: - XML
@@ -472,10 +504,9 @@ private final class KMLConverter: NSObject, XMLParserDelegate {
             guard let parent, parent.name == "Track" else { return }
             let numbers = parseDoubles(frame.text)
             guard numbers.count >= 2 else { return }
-            if numbers.count >= 3 {
-                parent.positions.append([numbers[0], numbers[1], numbers[2]])
-            } else {
-                parent.positions.append([numbers[0], numbers[1]])
+            let altitude = numbers.count >= 3 ? numbers[2] : nil
+            if let position = wgs84Position(lon: numbers[0], lat: numbers[1], altitude: altitude) {
+                parent.positions.append(position)
             }
         case "Point":
             if let parent, let first = frame.positions.first {
@@ -603,7 +634,11 @@ private final class GPXConverter: NSObject, XMLParserDelegate {
             if let parent, parent.name == "wpt" || parent.name == "rtept" || parent.name == "trkpt" {
                 parent.ele = frame.text
                 if parent.name == "wpt", let value = trimmed(frame.text) {
-                    parent.properties["ele"] = Double(value) ?? value
+                    if let number = Double(value) {
+                        if number.isFinite { parent.properties["ele"] = number }
+                    } else {
+                        parent.properties["ele"] = value
+                    }
                 }
             }
         case "time":
@@ -664,35 +699,41 @@ private func gpxLonePoints(_ points: [[Double]]) -> GJGeometry? {
     return nil
 }
 
-/// `lat` and `lon` are attributes. `ele` becomes the altitude when it parses.
+/// `lat` and `lon` are attributes. A finite `ele` becomes the altitude.
 private func gpxPosition(_ attributes: [String: String], ele: String?) -> [Double]? {
-    guard let lat = Double(attributes["lat"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""),
-          let lon = Double(attributes["lon"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") else {
-        return nil
-    }
-    if let ele, let altitude = Double(ele.trimmingCharacters(in: .whitespacesAndNewlines)) {
-        return [lon, lat, altitude]
-    }
-    return [lon, lat]
+    guard let lat = finiteNumber(attributes["lat"]),
+          let lon = finiteNumber(attributes["lon"]) else { return nil }
+    return wgs84Position(lon: lon, lat: lat, altitude: finiteNumber(ele))
+}
+
+private func finiteNumber(_ text: String?) -> Double? {
+    guard let text, let value = trimmed(text), let number = Double(value), number.isFinite else { return nil }
+    return number
 }
 
 // MARK: - KMZ
 
 /// Root `doc.kml`, then the first root `.kml`. When the archive has neither,
-/// a `doc.kml` at any depth, then the first `.kml` anywhere.
+/// a `doc.kml` at any depth, then the first `.kml` anywhere. Only that entry
+/// is inflated. A KML that expands past its declared size is not valid.
 private func kmlDocument(in kmz: Data) -> Data? {
-    guard let entries = ZipArchive.entries(in: kmz) else { return nil }
+    guard let entries = ZipArchive.entries(in: kmz),
+          let entry = kmlEntry(in: entries) else { return nil }
+    return ZipArchive.data(for: entry, in: kmz)
+}
+
+private func kmlEntry(in entries: [ZipEntry]) -> ZipEntry? {
     let root = entries.filter { isZipRoot($0.name) }
     if let document = root.first(where: { $0.name == "doc.kml" }) {
-        return document.data
+        return document
     }
     if let document = root.first(where: { $0.name.lowercased().hasSuffix(".kml") }) {
-        return document.data
+        return document
     }
     if let document = entries.first(where: { zipFileName($0.name) == "doc.kml" }) {
-        return document.data
+        return document
     }
-    return entries.first(where: { $0.name.lowercased().hasSuffix(".kml") })?.data
+    return entries.first(where: { $0.name.lowercased().hasSuffix(".kml") })
 }
 
 private func zipFileName(_ path: String) -> String {
@@ -706,11 +747,16 @@ private func isZipRoot(_ name: String) -> Bool {
 
 private struct ZipEntry {
     var name: String
-    var data: Data
+    var method: UInt16
+    var crc: UInt32
+    var compressedSize: Int
+    var uncompressedSize: Int
+    var localOffset: Int
 }
 
-/// Reads stored and raw-deflate entries. ZIP method 8 is raw DEFLATE
-/// (`inflateInit2` with a window of -15), which is not the zlib wrapper.
+/// Central-directory listing for stored and raw-deflate entries. ZIP method 8
+/// is raw DEFLATE (`inflateInit2` with a window of -15), not the zlib wrapper.
+/// One entry is inflated at a time, and only up to its declared size.
 private enum ZipArchive {
     static func entries(in data: Data) -> [ZipEntry]? {
         guard let eocd = endOfCentralDirectory(in: data),
@@ -728,6 +774,7 @@ private enum ZipArchive {
             guard cursor + 46 <= data.count, u32(data, cursor) == 0x02014b50,
                   let flags = u16(data, cursor + 8),
                   let method = u16(data, cursor + 10),
+                  let crc = u32(data, cursor + 16),
                   let compressedSize = u32(data, cursor + 20),
                   let uncompressedSize = u32(data, cursor + 24),
                   let nameLength = u16(data, cursor + 28),
@@ -743,15 +790,30 @@ private enum ZipArchive {
             if compressedSize == 0xFFFFFFFF || uncompressedSize == 0xFFFFFFFF || localOffset == 0xFFFFFFFF {
                 continue
             }
-            guard let file = zipEntryData(
-                data,
-                localOffset: Int(localOffset),
+            entries.append(ZipEntry(
+                name: name,
                 method: method,
-                compressedSize: Int(compressedSize)
-            ) else { continue }
-            entries.append(ZipEntry(name: name, data: file))
+                crc: crc,
+                compressedSize: Int(compressedSize),
+                uncompressedSize: Int(uncompressedSize),
+                localOffset: Int(localOffset)
+            ))
         }
         return entries
+    }
+
+    static func data(for entry: ZipEntry, in archive: Data) -> Data? {
+        guard let file = zipEntryData(
+            archive,
+            localOffset: entry.localOffset,
+            method: entry.method,
+            compressedSize: entry.compressedSize,
+            uncompressedSize: entry.uncompressedSize
+        ) else { return nil }
+        #if canImport(zlib)
+        guard zipCRC32(file) == entry.crc else { return nil }
+        #endif
+        return file
     }
 }
 
@@ -772,7 +834,13 @@ private func endOfCentralDirectory(in data: Data) -> Int? {
     return nil
 }
 
-private func zipEntryData(_ data: Data, localOffset: Int, method: UInt16, compressedSize: Int) -> Data? {
+private func zipEntryData(
+    _ data: Data,
+    localOffset: Int,
+    method: UInt16,
+    compressedSize: Int,
+    uncompressedSize: Int
+) -> Data? {
     guard localOffset >= 0, localOffset + 30 <= data.count,
           u32(data, localOffset) == 0x04034b50,
           let nameLength = u16(data, localOffset + 26),
@@ -781,9 +849,10 @@ private func zipEntryData(_ data: Data, localOffset: Int, method: UInt16, compre
     guard let payload = slice(data, start, compressedSize) else { return nil }
     switch method {
     case 0:
+        guard payload.count == uncompressedSize else { return nil }
         return payload
     case 8:
-        return inflateRawDeflate(payload)
+        return inflateRawDeflate(payload, maxBytes: uncompressedSize)
     default:
         return nil
     }
@@ -812,8 +881,11 @@ private func u32(_ data: Data, _ offset: Int) -> UInt32? {
         | (UInt32(data[offset + 3]) << 24)
 }
 
-private func inflateRawDeflate(_ source: Data) -> Data? {
-    if source.isEmpty { return Data() }
+/// Inflates raw DEFLATE and stops once `maxBytes` would be passed. The result
+/// has to be exactly the declared size; a short or long stream is rejected.
+private func inflateRawDeflate(_ source: Data, maxBytes: Int) -> Data? {
+    if maxBytes < 0 { return nil }
+    if source.isEmpty { return maxBytes == 0 ? Data() : nil }
     #if canImport(zlib)
     var stream = z_stream()
     guard inflateInit2_(&stream, -15, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size)) == Z_OK else {
@@ -822,28 +894,47 @@ private func inflateRawDeflate(_ source: Data) -> Data? {
     defer { inflateEnd(&stream) }
     let chunk = 65_536
     var output = Data()
+    if maxBytes < chunk { output.reserveCapacity(maxBytes) }
     return source.withUnsafeBytes { srcRaw -> Data? in
         guard let src = srcRaw.bindMemory(to: UInt8.self).baseAddress else { return nil }
         stream.next_in = UnsafeMutablePointer(mutating: src)
         stream.avail_in = uInt(source.count)
         while true {
-            var buffer = Data(count: chunk)
-            let capacity = buffer.count
+            let room = maxBytes - output.count
+            let capacity = min(chunk, room + 1)
+            if capacity <= 0 { return nil }
+            var buffer = Data(count: capacity)
             let status: Int32 = buffer.withUnsafeMutableBytes { dstRaw in
                 guard let dst = dstRaw.bindMemory(to: UInt8.self).baseAddress else { return Z_DATA_ERROR }
                 stream.next_out = dst
                 stream.avail_out = uInt(capacity)
                 return inflate(&stream, Z_NO_FLUSH)
             }
-            let produced = chunk - Int(stream.avail_out)
+            let produced = capacity - Int(stream.avail_out)
             if produced > 0 {
+                if output.count > maxBytes - produced { return nil }
                 output.append(buffer.prefix(produced))
             }
-            if status == Z_STREAM_END { return output }
+            if status == Z_STREAM_END {
+                return output.count == maxBytes ? output : nil
+            }
             if status != Z_OK || (produced == 0 && stream.avail_in == 0) { return nil }
         }
     }
     #else
     return nil
+    #endif
+}
+
+private func zipCRC32(_ data: Data) -> UInt32 {
+    #if canImport(zlib)
+    if data.isEmpty { return UInt32(truncatingIfNeeded: crc32(0, nil, 0)) }
+    let value = data.withUnsafeBytes { raw -> uLong in
+        guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return crc32(0, nil, 0) }
+        return crc32(0, base, uInt(data.count))
+    }
+    return UInt32(truncatingIfNeeded: value)
+    #else
+    return 0
     #endif
 }

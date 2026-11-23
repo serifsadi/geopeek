@@ -12,6 +12,13 @@
 //
 // test-fixtures/sample.kmz is sample.kml deflated as doc.kml, written after
 // a root other.kml and a nested kml, so the reader has to choose doc.kml.
+//
+// nonfinite.gpx and nonfinite.kml carry NaN, infinity, and out-of-range
+// positions. latitude-95.geojson is a FeatureCollection with a latitude of 95.
+// with-image.kmz is doc.kml plus a PNG. zip-bomb.kmz points 32 central-directory
+// entries at one deflate stream of 2_000_000 zero bytes (about 64 MB if every
+// entry were inflated) and is a few kilobytes on disk. lying-size.kmz declares
+// doc.kml shorter than its deflate stream.
 
 import Foundation
 #if canImport(FoundationXML)
@@ -110,6 +117,8 @@ func run() throws {
     checkCDATA()
     checkExtendedDataName()
     checkSinglePointGPX()
+    try checkNonFiniteCoordinates()
+    try checkKMZInflate()
     checkLargeKML()
     try checkRenderHandoff(kml: kml, gpx: gpx, kmz: kmz)
 }
@@ -608,6 +617,211 @@ func propertyKeyOrders(in data: Data) -> [[String]] {
     return orders
 }
 
+func checkNonFiniteCoordinates() throws {
+    let gpx = try load("nonfinite.gpx")
+    guard let gpxFeatures = importedFeatures(gpx, .gpx) else {
+        fail("nonfinite.gpx did not convert")
+        return
+    }
+    let gpxNames = gpxFeatures.compactMap { ($0["properties"] as? [String: Any])?["name"] as? String }
+    check(gpxNames == ["NoEle", "Good", "Road", "Ridge"], "nonfinite GPX names \(gpxNames)")
+    for absent in ["Bad", "High"] {
+        check(!gpxNames.contains(absent), "\(absent) should have been dropped")
+    }
+
+    let noEle = feature(gpxFeatures, "NoEle")!
+    check(geometry(noEle)["coordinates"] as? [Double] == [-122.4, 37.8],
+          "NaN elevation should leave the position without altitude \(String(describing: geometry(noEle)["coordinates"]))")
+    let noEleProps = noEle["properties"] as? [String: Any] ?? [:]
+    check(noEleProps["ele"] == nil, "NaN elevation was kept as a property")
+    check(noEleProps["name"] as? String == "NoEle", "NoEle lost its name")
+
+    let good = feature(gpxFeatures, "Good")!
+    check(canon(geometry(good)["coordinates"]!) == canon([2.0, 1.0, 12.5]),
+          "finite elevation was dropped \(canon(geometry(good)["coordinates"]!))")
+    check((good["properties"] as? [String: Any])?["ele"] as? Double == 12.5, "Good elevation property")
+
+    let road = feature(gpxFeatures, "Road")!
+    check(geometry(road)["type"] as? String == "LineString", "route with a dropped point should stay a line")
+    check(canon(geometry(road)["coordinates"]!) == canon([[20.0, 10.0], [21.0, 11.0]]),
+          "Road kept the nan point \(canon(geometry(road)["coordinates"]!))")
+
+    let ridge = feature(gpxFeatures, "Ridge")!
+    check(canon(geometry(ridge)["coordinates"]!) == canon([[5.0, 4.0, 1.0], [7.0, 6.0, 2.0]]),
+          "Ridge kept the infinite point \(canon(geometry(ridge)["coordinates"]!))")
+
+    switch renderFilePreview(data: gpx, fileName: "nonfinite.gpx") {
+    case .map:
+        break
+    case .fallback, .invalid, .nothingToPreview:
+        fail("nonfinite.gpx should render the positions that remain")
+    }
+
+    let onlyBad = Data("<gpx><wpt lat=\"nan\" lon=\"inf\"><ele>NaN</ele><name>Gone</name></wpt></gpx>".utf8)
+    check(geoJSONData(from: onlyBad, kind: .gpx) == nil, "a GPX with no finite position converted")
+    checkNotValid(onlyBad, "bad.gpx", "GPX")
+
+    let edge = Data("<gpx><wpt lat=\"90\" lon=\"-180\"><name>NW</name></wpt><wpt lat=\"-90\" lon=\"180\"><name>SE</name></wpt></gpx>".utf8)
+    guard let edges = importedFeatures(edge, .gpx), edges.count == 2 else {
+        fail("latitude 90 or longitude 180 was dropped")
+        return
+    }
+    check(geometry(edges[0])["coordinates"] as? [Double] == [-180, 90], "NW edge coordinates")
+    check(geometry(edges[1])["coordinates"] as? [Double] == [180, -90], "SE edge coordinates")
+
+    let over = Data("<gpx><wpt lat=\"90.0001\" lon=\"0\"/><wpt lat=\"0\" lon=\"-180.0001\"/><wpt lat=\"1\" lon=\"2\"><name>Inside</name></wpt></gpx>".utf8)
+    guard let inside = importedFeatures(over, .gpx), inside.count == 1 else {
+        fail("an out-of-range GPX position was kept")
+        return
+    }
+    check((inside[0]["properties"] as? [String: Any])?["name"] as? String == "Inside", "the in-range waypoint was dropped")
+
+    let textEle = Data("<gpx><wpt lat=\"1\" lon=\"2\"><ele>high</ele><name>Hill</name></wpt></gpx>".utf8)
+    guard let hill = importedFeatures(textEle, .gpx), hill.count == 1 else {
+        fail("a non-numeric elevation dropped the waypoint")
+        return
+    }
+    check(geometry(hill[0])["coordinates"] as? [Double] == [2, 1], "non-numeric elevation was used as altitude")
+    check((hill[0]["properties"] as? [String: Any])?["ele"] as? String == "high", "non-numeric elevation text was dropped")
+
+    let kml = try load("nonfinite.kml")
+    guard let kmlFeatures = importedFeatures(kml, .kml) else {
+        fail("nonfinite.kml did not convert")
+        return
+    }
+    let kmlNames = kmlFeatures.compactMap { ($0["properties"] as? [String: Any])?["name"] as? String }
+    check(kmlNames == ["Alt", "Line", "Track"], "nonfinite KML names \(kmlNames)")
+    for absent in ["Huge", "Nan", "Inf", "High"] {
+        check(!kmlNames.contains(absent), "\(absent) should have been dropped")
+    }
+    check(canon(geometry(feature(kmlFeatures, "Alt")!)["coordinates"]!) == canon([-122.4, 37.8]),
+          "infinite altitude was kept \(canon(geometry(feature(kmlFeatures, "Alt")!)["coordinates"]!))")
+    check(canon(geometry(feature(kmlFeatures, "Line")!)["coordinates"]!) == canon([[0.0, 0.0], [1.0, 1.0]]),
+          "line kept a non-finite position")
+    check(canon(geometry(feature(kmlFeatures, "Track")!)["coordinates"]!) == canon([[-120.0, 35.0, 100.0], [-120.1, 35.1]]),
+          "track kept a non-finite position or altitude")
+
+    let onlyHuge = Data("<kml><Placemark><name>Huge</name><Point><coordinates>1e999,1</coordinates></Point></Placemark></kml>".utf8)
+    check(geoJSONData(from: onlyHuge, kind: .kml) == nil, "a KML with no finite position converted")
+    checkNotValid(onlyHuge, "huge.kml", "KML")
+
+    let geo = try load("latitude-95.geojson")
+    guard let meta = parseGeoJSON(geo) else {
+        fail("latitude-95.geojson did not parse")
+        return
+    }
+    check(meta.featureCount == 3, "latitude-95 feature count \(meta.featureCount)")
+    check(meta.vertexCount == 3, "latitude-95 vertex count \(meta.vertexCount)")
+    if let bounds = meta.bounds {
+        check(near(bounds.minLng, -122.4) && near(bounds.maxLng, -122.4)
+              && near(bounds.minLat, 37.8) && near(bounds.maxLat, 37.8),
+              "out-of-range positions were included in bounds \(bounds.minLng),\(bounds.minLat) \(bounds.maxLng),\(bounds.maxLat)")
+    } else {
+        fail("the in-range position was left out of bounds")
+    }
+    let onlyHigh = Data(#"{"type":"Point","coordinates":[0,95]}"#.utf8)
+    guard let highMeta = parseGeoJSON(onlyHigh) else {
+        fail("a GeoJSON point at latitude 95 was rejected")
+        return
+    }
+    check(highMeta.bounds == nil, "latitude 95 was used as the map bounds")
+    check(highMeta.vertexCount == 1, "latitude 95 was not counted")
+    check(makeMapHTML(meta: highMeta).contains("\"bounds\":null"), "the map page kept an out-of-range bounds")
+
+    let script = try String(contentsOfFile: "Shared/maplibre-gl.js", encoding: .utf8)
+    check(script.contains("\"5.24.1\""), "vendored MapLibre is not 5.24.1")
+    check(!script.contains("5.24.0"), "vendored MapLibre still names 5.24.0")
+}
+
+func near(_ a: Double, _ b: Double) -> Bool {
+    abs(a - b) < 1e-9
+}
+
+func checkKMZInflate() throws {
+    let image = try load("with-image.kmz")
+    let names = zipNames(image)
+    check(names == ["doc.kml", "files/photo.png"] || (names.contains("doc.kml") && names.contains("files/photo.png")),
+          "with-image.kmz entries \(names)")
+    guard let photo = importedFeatures(image, .kmz), photo.count == 1 else {
+        fail("with-image.kmz did not convert")
+        return
+    }
+    check((photo[0]["properties"] as? [String: Any])?["name"] as? String == "Photo Stop",
+          "with-image.kmz did not read doc.kml")
+    check(canon(geometry(photo[0])["coordinates"]!) == canon([-122.4, 37.8, 12.0]),
+          "with-image coordinates \(canon(geometry(photo[0])["coordinates"]!))")
+
+    let lying = try load("lying-size.kmz")
+    check(featureName(in: lying) == nil, "a KMZ whose KML expands past its declared size was read")
+    checkNotValid(lying, "lying-size.kmz", "KMZ")
+
+    let bomb = try load("zip-bomb.kmz")
+    check(bomb.count < 32_000, "zip bomb is \(bomb.count) bytes on disk")
+    let bombNames = zipNames(bomb)
+    check(bombNames.contains("doc.kml") && bombNames.filter { $0.hasSuffix(".bin") }.count == 32,
+          "zip bomb central directory \(bombNames)")
+    let beforeKB = highWaterKB()
+    check(featureName(in: bomb) == "Kept", "zip bomb did not read doc.kml")
+    if let beforeKB, let afterKB = highWaterKB() {
+        check(afterKB - beforeKB < 16_000,
+              "zip bomb inflated \(afterKB - beforeKB) KB; only doc.kml should be unpacked")
+    }
+    guard let kept = importedFeatures(bomb, .kmz), kept.count == 1 else {
+        fail("zip bomb doc.kml did not convert")
+        return
+    }
+    check(geometry(kept[0])["coordinates"] as? [Double] == [9, 8], "zip bomb coordinates")
+
+    let doc = Data("<?xml version=\"1.0\"?><kml><Placemark><name>Document</name><Point><coordinates>1,2</coordinates></Point></Placemark></kml>".utf8)
+    let valid = storedZip([("doc.kml", doc)])
+    check(featureName(in: valid) == "Document", "stored doc.kml with a matching CRC should be read")
+    check(featureName(in: corruptCentralCRC(valid)) == nil, "a KMZ with a bad CRC was read")
+}
+
+/// Peak resident set, in kilobytes, where the platform reports it.
+func highWaterKB() -> Int? {
+    #if os(Linux)
+    guard let text = try? String(contentsOfFile: "/proc/self/status", encoding: .utf8) else { return nil }
+    for line in text.split(separator: "\n") where line.hasPrefix("VmHWM:") {
+        let fields = line.split(whereSeparator: { $0 == " " || $0 == "\t" })
+        if fields.count >= 2, let value = Int(fields[1]) { return value }
+    }
+    return nil
+    #else
+    return nil
+    #endif
+}
+
+func zipNames(_ data: Data) -> [String] {
+    guard let eocd = eocdOffset(data),
+          let count = readU16(data, eocd + 10),
+          let offset = readU32(data, eocd + 16) else { return [] }
+    var cursor = Int(offset)
+    var names: [String] = []
+    for _ in 0..<Int(count) {
+        guard readU32(data, cursor) == 0x02014b50,
+              let nameLength = readU16(data, cursor + 28),
+              let extraLength = readU16(data, cursor + 30),
+              let commentLength = readU16(data, cursor + 32),
+              cursor + 46 + Int(nameLength) <= data.count else { return names }
+        let start = cursor + 46
+        let nameData = data.subdata(in: start..<(start + Int(nameLength)))
+        names.append(String(decoding: nameData, as: UTF8.self))
+        cursor = start + Int(nameLength) + Int(extraLength) + Int(commentLength)
+    }
+    return names
+}
+
+func corruptCentralCRC(_ archive: Data) -> Data {
+    guard let eocd = eocdOffset(archive),
+          let offset = readU32(archive, eocd + 16) else { return archive }
+    let index = Int(offset) + 16
+    guard index < archive.count else { return archive }
+    var copy = archive
+    copy[index] ^= 0xff
+    return copy
+}
+
 func checkEmptyAndMalformed() {
     let emptyKML = "<?xml version=\"1.0\"?><kml xmlns=\"http://www.opengis.net/kml/2.2\"><Document/></kml>"
     check(geoJSONData(from: Data(), kind: .kml) == nil, "empty KML converted")
@@ -888,13 +1102,14 @@ func storedZip(_ files: [(String, Data)]) -> Data {
     for (name, body) in files {
         let nameData = Data(name.utf8)
         let offset = UInt32(local.count)
+        let crc = crc32(body)
         local.append(le32(0x04034b50))
         local.append(le16(20))
         local.append(le16(0))
         local.append(le16(0))
         local.append(le16(0))
         local.append(le16(0))
-        local.append(le32(0))
+        local.append(le32(crc))
         local.append(le32(UInt32(body.count)))
         local.append(le32(UInt32(body.count)))
         local.append(le16(UInt16(nameData.count)))
@@ -909,7 +1124,7 @@ func storedZip(_ files: [(String, Data)]) -> Data {
         central.append(le16(0))
         central.append(le16(0))
         central.append(le16(0))
-        central.append(le32(0))
+        central.append(le32(crc))
         central.append(le32(UInt32(body.count)))
         central.append(le32(UInt32(body.count)))
         central.append(le16(UInt16(nameData.count)))
@@ -933,6 +1148,21 @@ func storedZip(_ files: [(String, Data)]) -> Data {
     archive.append(le32(centralOffset))
     archive.append(le16(0))
     return archive
+}
+
+func crc32(_ data: Data) -> UInt32 {
+    var crc: UInt32 = 0xFFFF_FFFF
+    for byte in data {
+        crc ^= UInt32(byte)
+        for _ in 0..<8 {
+            if crc & 1 == 1 {
+                crc = (crc >> 1) ^ 0xEDB8_8320
+            } else {
+                crc >>= 1
+            }
+        }
+    }
+    return crc ^ 0xFFFF_FFFF
 }
 
 func le16(_ value: UInt16) -> Data {

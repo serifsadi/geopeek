@@ -1,0 +1,20 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"name": "High"},
+      "geometry": {"type": "Point", "coordinates": [10, 95]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Wide"},
+      "geometry": {"type": "Point", "coordinates": [181, 10]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Ok"},
+      "geometry": {"type": "Point", "coordinates": [-122.4, 37.8]}
+    }
+  ]
+}
