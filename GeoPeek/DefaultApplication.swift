@@ -25,6 +25,8 @@ final class DefaultApplication {
     private(set) var isDefaultForAll = false
     /// True while the consent dialogs are open, so a second click does not stack them.
     private(set) var isSetting = false
+    /// The unresolved-type alert is shown once. Later clicks stay quiet.
+    private var reportedMissingTypes = false
 
     /// Info.plist `LSItemContentTypes`, in the order the dialogs are shown.
     private static let typeIdentifiers = [
@@ -67,7 +69,8 @@ final class DefaultApplication {
         // elsewhere disables the control, and say so when a type never resolved.
         if pending.isEmpty {
             refresh()
-            if missing > 0 {
+            if missing > 0, !reportedMissingTypes {
+                reportedMissingTypes = true
                 present("GeoPeek could not find every file type it opens.")
             }
             return
@@ -90,9 +93,6 @@ final class DefaultApplication {
                 if failure == nil { failure = error.localizedDescription }
             }
         }
-        if missing > 0, failure == nil {
-            failure = "GeoPeek could not find every file type it opens."
-        }
         if let failure {
             present(failure.isEmpty ? "GeoPeek could not become the default app." : failure)
         }
@@ -110,7 +110,9 @@ final class DefaultApplication {
     }
 
     /// Path spelling, then the file itself. Launch Services may return this
-    /// same bundle through `/System/Volumes/Data` or a different case.
+    /// same bundle through `/System/Volumes/Data`. A different case of the
+    /// same file matches through the file resource identifier. The path
+    /// itself keeps its case, so another copy on a case-sensitive volume stays distinct.
     private static func isThisBundle(_ url: URL) -> Bool {
         let bundle = Bundle.main.bundleURL
         if normalizedPath(url) == normalizedPath(bundle) { return true }
@@ -126,7 +128,7 @@ final class DefaultApplication {
         while path.count > 1, path.hasSuffix("/") {
             path.removeLast()
         }
-        return path.lowercased(with: Locale(identifier: "en_US_POSIX"))
+        return path
     }
 
     private static func sameFile(_ lhs: URL, _ rhs: URL) -> Bool {
