@@ -101,10 +101,11 @@ private func geoJSONMeta(from root: [String: Any]) -> GeoJSONMeta? {
         if !arr.isEmpty, !(arr[0] is [Any]), arr.count >= 2,
            let lng = (arr[0] as? NSNumber)?.doubleValue,
            let lat = (arr[1] as? NSNumber)?.doubleValue {
-            meta.vertexCount += 1
-            // MapLibre rejects a latitude outside -90...90 or a longitude
-            // outside -180...180. Leave those positions out of the fit bounds.
-            if lng.isFinite, lat.isFinite, abs(lat) <= 90, abs(lng) <= 180 {
+            // MapLibre rejects a latitude outside -90...90. A longitude past
+            // -180...180 is valid when the data crosses the antimeridian.
+            // Count and fit only a finite position whose latitude is in range.
+            if lng.isFinite, lat.isFinite, abs(lat) <= 90 {
+                meta.vertexCount += 1
                 if lng < minLng { minLng = lng }
                 if lng > maxLng { maxLng = lng }
                 if lat < minLat { minLat = lat }
@@ -1547,7 +1548,8 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
           var n = 0, b = new maplibregl.LngLatBounds();
           (function walk(c) {
             if (typeof c[0] === 'number') {
-              if (isFinite(c[0]) && isFinite(c[1]) && c[1] >= -90 && c[1] <= 90 && c[0] >= -180 && c[0] <= 180) {
+              // Latitude outside -90...90 is not a map position. Longitude may pass -180...180.
+              if (isFinite(c[0]) && isFinite(c[1]) && c[1] >= -90 && c[1] <= 90) {
                 b.extend([c[0], c[1]]); n++;
               }
             }

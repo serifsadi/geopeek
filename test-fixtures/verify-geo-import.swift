@@ -13,8 +13,8 @@
 // test-fixtures/sample.kmz is sample.kml deflated as doc.kml, written after
 // a root other.kml and a nested kml, so the reader has to choose doc.kml.
 //
-// nonfinite.gpx and nonfinite.kml carry NaN, infinity, and out-of-range
-// positions. latitude-95.geojson is a FeatureCollection with a latitude of 95.
+// nonfinite.gpx and nonfinite.kml carry NaN, infinity, a latitude of 95,
+// and a longitude of 181. latitude-95.geojson repeats those two positions.
 // with-image.kmz is doc.kml plus a PNG. zip-bomb.kmz points 32 central-directory
 // entries at one deflate stream of 2_000_000 zero bytes (about 64 MB if every
 // entry were inflated) and is a few kilobytes on disk. lying-size.kmz declares
@@ -624,10 +624,12 @@ func checkNonFiniteCoordinates() throws {
         return
     }
     let gpxNames = gpxFeatures.compactMap { ($0["properties"] as? [String: Any])?["name"] as? String }
-    check(gpxNames == ["NoEle", "Good", "Road", "Ridge"], "nonfinite GPX names \(gpxNames)")
+    check(gpxNames == ["NoEle", "Good", "Wide", "Road", "Ridge"], "nonfinite GPX names \(gpxNames)")
     for absent in ["Bad", "High"] {
         check(!gpxNames.contains(absent), "\(absent) should have been dropped")
     }
+    check(geometry(feature(gpxFeatures, "Wide")!)["coordinates"] as? [Double] == [181, 10],
+          "longitude 181 was dropped")
 
     let noEle = feature(gpxFeatures, "NoEle")!
     check(geometry(noEle)["coordinates"] as? [Double] == [-122.4, 37.8],
@@ -669,12 +671,17 @@ func checkNonFiniteCoordinates() throws {
     check(geometry(edges[0])["coordinates"] as? [Double] == [-180, 90], "NW edge coordinates")
     check(geometry(edges[1])["coordinates"] as? [Double] == [180, -90], "SE edge coordinates")
 
-    let over = Data("<gpx><wpt lat=\"90.0001\" lon=\"0\"/><wpt lat=\"0\" lon=\"-180.0001\"/><wpt lat=\"1\" lon=\"2\"><name>Inside</name></wpt></gpx>".utf8)
-    guard let inside = importedFeatures(over, .gpx), inside.count == 1 else {
-        fail("an out-of-range GPX position was kept")
+    let over = Data("<gpx><wpt lat=\"90.0001\" lon=\"0\"/><wpt lat=\"0\" lon=\"-180.0001\"><name>West</name></wpt><wpt lat=\"10\" lon=\"181\"><name>East</name></wpt><wpt lat=\"1\" lon=\"2\"><name>Inside</name></wpt></gpx>".utf8)
+    guard let inside = importedFeatures(over, .gpx), inside.count == 3 else {
+        fail("a longitude past 180 was dropped, or a latitude past 90 was kept")
         return
     }
-    check((inside[0]["properties"] as? [String: Any])?["name"] as? String == "Inside", "the in-range waypoint was dropped")
+    check((inside[0]["properties"] as? [String: Any])?["name"] as? String == "West", "West was dropped")
+    let west = geometry(inside[0])["coordinates"] as? [Double] ?? []
+    check(west.count == 2 && near(west[0], -180.0001) && near(west[1], 0), "West coordinates \(west)")
+    check((inside[1]["properties"] as? [String: Any])?["name"] as? String == "East", "East was dropped")
+    check(geometry(inside[1])["coordinates"] as? [Double] == [181, 10], "East coordinates")
+    check((inside[2]["properties"] as? [String: Any])?["name"] as? String == "Inside", "the in-range waypoint was dropped")
 
     let textEle = Data("<gpx><wpt lat=\"1\" lon=\"2\"><ele>high</ele><name>Hill</name></wpt></gpx>".utf8)
     guard let hill = importedFeatures(textEle, .gpx), hill.count == 1 else {
@@ -690,10 +697,12 @@ func checkNonFiniteCoordinates() throws {
         return
     }
     let kmlNames = kmlFeatures.compactMap { ($0["properties"] as? [String: Any])?["name"] as? String }
-    check(kmlNames == ["Alt", "Line", "Track"], "nonfinite KML names \(kmlNames)")
+    check(kmlNames == ["Wide", "Alt", "Line", "Track"], "nonfinite KML names \(kmlNames)")
     for absent in ["Huge", "Nan", "Inf", "High"] {
         check(!kmlNames.contains(absent), "\(absent) should have been dropped")
     }
+    check(geometry(feature(kmlFeatures, "Wide")!)["coordinates"] as? [Double] == [181, 10],
+          "KML longitude 181 was dropped")
     check(canon(geometry(feature(kmlFeatures, "Alt")!)["coordinates"]!) == canon([-122.4, 37.8]),
           "infinite altitude was kept \(canon(geometry(feature(kmlFeatures, "Alt")!)["coordinates"]!))")
     check(canon(geometry(feature(kmlFeatures, "Line")!)["coordinates"]!) == canon([[0.0, 0.0], [1.0, 1.0]]),
@@ -711,13 +720,13 @@ func checkNonFiniteCoordinates() throws {
         return
     }
     check(meta.featureCount == 3, "latitude-95 feature count \(meta.featureCount)")
-    check(meta.vertexCount == 3, "latitude-95 vertex count \(meta.vertexCount)")
+    check(meta.vertexCount == 2, "latitude-95 vertex count \(meta.vertexCount)")
     if let bounds = meta.bounds {
-        check(near(bounds.minLng, -122.4) && near(bounds.maxLng, -122.4)
-              && near(bounds.minLat, 37.8) && near(bounds.maxLat, 37.8),
-              "out-of-range positions were included in bounds \(bounds.minLng),\(bounds.minLat) \(bounds.maxLng),\(bounds.maxLat)")
+        check(near(bounds.minLng, -122.4) && near(bounds.maxLng, 181)
+              && near(bounds.minLat, 10) && near(bounds.maxLat, 37.8),
+              "bounds \(bounds.minLng),\(bounds.minLat) \(bounds.maxLng),\(bounds.maxLat)")
     } else {
-        fail("the in-range position was left out of bounds")
+        fail("the in-range positions were left out of bounds")
     }
     let onlyHigh = Data(#"{"type":"Point","coordinates":[0,95]}"#.utf8)
     guard let highMeta = parseGeoJSON(onlyHigh) else {
@@ -725,12 +734,66 @@ func checkNonFiniteCoordinates() throws {
         return
     }
     check(highMeta.bounds == nil, "latitude 95 was used as the map bounds")
-    check(highMeta.vertexCount == 1, "latitude 95 was not counted")
+    check(highMeta.vertexCount == 0, "latitude 95 was counted")
     check(makeMapHTML(meta: highMeta).contains("\"bounds\":null"), "the map page kept an out-of-range bounds")
+    let wide = Data(#"{"type":"Point","coordinates":[181,10]}"#.utf8)
+    guard let wideMeta = parseGeoJSON(wide), let wideBounds = wideMeta.bounds else {
+        fail("longitude 181 was left out of the map bounds")
+        return
+    }
+    check(wideMeta.vertexCount == 1, "longitude 181 was not counted")
+    check(near(wideBounds.minLng, 181) && near(wideBounds.maxLng, 181)
+          && near(wideBounds.minLat, 10) && near(wideBounds.maxLat, 10),
+          "longitude 181 bounds")
+    let page = makeMapHTML(meta: wideMeta)
+    check(page.contains("c[1] >= -90 && c[1] <= 90"), "featureBounds lost the latitude check")
+    check(!page.contains("c[0] >= -180") && !page.contains("c[0] <= 180"),
+          "featureBounds still rejects a longitude past 180")
+
+    try checkKMLCoordinateScan()
 
     let script = try String(contentsOfFile: "Shared/maplibre-gl.js", encoding: .utf8)
     check(script.contains("\"5.24.1\""), "vendored MapLibre is not 5.24.1")
     check(!script.contains("5.24.0"), "vendored MapLibre still names 5.24.0")
+}
+
+/// Whitespace-separated junk, nan, and inf must not shift the next lon,lat.
+/// A 2-component tuple and a 3-component tuple stay separate. A non-finite
+/// altitude is omitted. A longitude of 200 is kept. A latitude of 95 is not.
+func checkKMLCoordinateScan() throws {
+    let text = """
+    <?xml version="1.0"?>
+    <kml><Placemark><name>Scan</name><LineString><coordinates>
+    nan,5 inf,10 -inf,1
+    1,2
+    junk
+    3,4,5
+    foo 6,7
+    8,9,nan
+    10, 11, 12
+    1e999,2
+    200,45
+    10,95
+    abc,def
+    13,14,15 16,17
+    </coordinates></LineString></Placemark></kml>
+    """
+    guard let features = importedFeatures(Data(text.utf8), .kml), features.count == 1 else {
+        fail("KML coordinate scan did not keep a line")
+        return
+    }
+    let expected: [[Double]] = [
+        [1, 2],
+        [3, 4, 5],
+        [6, 7],
+        [8, 9],
+        [10, 11, 12],
+        [200, 45],
+        [13, 14, 15],
+        [16, 17]
+    ]
+    check(canon(geometry(features[0])["coordinates"]!) == canon(expected),
+          "KML coordinates were misread \(canon(geometry(features[0])["coordinates"]!))")
 }
 
 func near(_ a: Double, _ b: Double) -> Bool {

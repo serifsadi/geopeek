@@ -227,27 +227,12 @@ private func jsonObjectText(_ object: Any) -> String? {
     return text
 }
 
-/// `JSONSerialization` raises an Objective-C exception on NaN and infinity.
-/// `try?` does not catch that, so a non-finite number is rejected first.
+/// `JSONSerialization.data` raises an Objective-C exception on NaN and infinity.
+/// `try?` does not catch that. `isValidJSONObject` is false for those numbers,
+/// so `data` is not called.
 private func jsonData(_ object: Any) -> Data? {
-    guard !containsNonFinite(object), JSONSerialization.isValidJSONObject(object) else { return nil }
+    guard JSONSerialization.isValidJSONObject(object) else { return nil }
     return try? JSONSerialization.data(withJSONObject: object)
-}
-
-private func containsNonFinite(_ value: Any) -> Bool {
-    if value is String { return false }
-    if let number = value as? Double { return !number.isFinite }
-    if let number = value as? NSNumber { return !number.doubleValue.isFinite }
-    if let dictionary = value as? [String: Any] {
-        return dictionary.values.contains(where: containsNonFinite)
-    }
-    let mirror = Mirror(reflecting: value)
-    if mirror.displayStyle == .collection || mirror.displayStyle == .dictionary {
-        for child in mirror.children where containsNonFinite(child.value) {
-            return true
-        }
-    }
-    return false
 }
 
 /// `collapseSingle` keeps one Point, LineString, or Polygon as that type.
@@ -338,10 +323,11 @@ private func parseDoubles(_ text: String) -> [Double] {
     return values
 }
 
-/// Longitude and latitude have to be finite and inside the WGS84 range.
+/// Latitude has to be finite and inside -90...90. Longitude has to be finite.
+/// A longitude past -180...180 is kept so a line can cross the antimeridian.
 /// A non-finite altitude is omitted, the same as a missing elevation.
 private func wgs84Position(lon: Double, lat: Double, altitude: Double?) -> [Double]? {
-    guard lon.isFinite, lat.isFinite, abs(lat) <= 90, abs(lon) <= 180 else { return nil }
+    guard lon.isFinite, lat.isFinite, abs(lat) <= 90 else { return nil }
     if let altitude, altitude.isFinite {
         return [lon, lat, altitude]
     }

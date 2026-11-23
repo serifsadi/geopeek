@@ -15,6 +15,9 @@
   <wpt lat="95" lon="10">
     <name>High</name>
   </wpt>
+  <wpt lat="10" lon="181">
+    <name>Wide</name>
+  </wpt>
   <rte>
     <name>Road</name>
     <rtept lat="nan" lon="1"><ele>Infinity</ele></rtept>
