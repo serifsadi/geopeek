@@ -414,7 +414,7 @@ private func statusCardHTML(title: String, message: String) -> String {
 /// Most file text a fallback page will embed. Larger files keep a prefix.
 let jsonFallbackMaxBytes = 5 * 1024 * 1024
 
-enum RenderedPreview {
+enum RenderedPreview: Sendable {
     /// Map page, plus the `window.__GEO__` script injected at document start.
     case map(html: String, userScript: String)
     /// Read-only JSON or raw text. No script, no file-controlled URLs.

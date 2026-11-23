@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Opening another file while an earlier one is still loading keeps the latest file. The earlier result is discarded and is not added to Recents. Reading the file and preparing the preview run off the main thread, so a large file does not freeze the window.
+
 ## 0.4.0
 
 - Clear Recents keeps the same space under the divider and has more space above the window's bottom edge, so the label clears the rounded corner.

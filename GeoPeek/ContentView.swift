@@ -11,6 +11,7 @@ import UniformTypeIdentifiers
 
 // MARK: - Root view
 
+@MainActor
 struct ContentView: View {
     @Binding var fileURL: URL?
     @State private var isDragOver = false
@@ -73,6 +74,7 @@ struct ContentView: View {
 
 }
 
+@MainActor
 func openDocument(into fileURL: Binding<URL?>) {
     let panel = NSOpenPanel()
     panel.canChooseFiles           = true
@@ -85,6 +87,7 @@ func openDocument(into fileURL: Binding<URL?>) {
     }
 }
 
+@MainActor
 func pasteGeoJSON(into fileURL: Binding<URL?>) {
     guard let string = NSPasteboard.general.string(forType: .string),
           !string.isEmpty else {
@@ -123,6 +126,7 @@ private func supportedContentTypes() -> [UTType] {
     return types
 }
 
+@MainActor
 private func showPasteError(_ message: String) {
     let alert = NSAlert()
     alert.messageText = "Paste Failed"
@@ -134,6 +138,7 @@ private func showPasteError(_ message: String) {
 
 // MARK: - Welcome / drop zone
 
+@MainActor
 struct WelcomeView: View {
     @Binding var isDragOver: Bool
     let onOpen: () -> Void
@@ -275,6 +280,7 @@ struct WelcomeView: View {
     }
 }
 
+@MainActor
 private struct RecentRow: View {
     let url: URL
     let onOpen: () -> Void
@@ -392,6 +398,7 @@ private struct RecentRow: View {
 /// Serves `maplibre-gl.js` and `maplibre-gl.css` from the app bundle via the
 /// custom `geopeek://` scheme, letting `loadHTMLString(_:baseURL:)` resolve
 /// relative resource URLs without hitting WKWebView's file:// sandbox limits.
+@MainActor
 private final class MapLibreSchemeHandler: NSObject, WKURLSchemeHandler {
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
@@ -424,6 +431,7 @@ private final class MapLibreSchemeHandler: NSObject, WKURLSchemeHandler {
 
 // MARK: - Map NSViewRepresentable
 
+@MainActor
 struct MapView: NSViewRepresentable {
     let fileURL: URL
     var onInaccessible: () -> Void
@@ -467,6 +475,8 @@ struct MapView: NSViewRepresentable {
     final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
         var currentURL: URL?
         var onInaccessible: () -> Void = {}
+        private var loadGate = FileLoadGate()
+        private var loadTask: Task<Void, Never>?
         /// Base URL of the document most recently passed to `loadHTMLString`.
         /// `nil` allows only `about:blank` (the web view's initial empty page).
         private var documentBaseURL: URL?
@@ -477,48 +487,63 @@ struct MapView: NSViewRepresentable {
 
         func load(into wv: WKWebView, url: URL, onInaccessible: @escaping () -> Void) {
             self.onInaccessible = onInaccessible
+            loadTask?.cancel()
+            let ticket = loadGate.begin()
             let name = url.lastPathComponent
             let candidates = RecentFiles.shared.accessCandidates(for: url)
-            Task.detached(priority: .userInitiated) {
-                var data: Data?
-                for candidate in candidates {
-                    if let read = Self.contents(of: candidate) {
-                        data = read
-                        break
-                    }
-                }
-                let loaded = data
-                await MainActor.run {
-                    guard let data = loaded else {
-                        self.onInaccessible()
-                        return
-                    }
-                    self.documentBaseURL = Coordinator.baseURL
-                    let ucc = wv.configuration.userContentController
-                    ucc.removeAllUserScripts()
-                    let preview = renderFilePreview(data: data, fileName: name)
-                    // Finder, Open, drop, and Open Recent all arrive here.
-                    // The Not Valid page is not an open, so it is left out of Recents.
-                    // Nothing to Preview is a real file, so it is noted.
-                    switch preview {
-                    case .map, .fallback, .nothingToPreview:
-                        RecentFiles.shared.note(url)
-                    case .invalid:
-                        break
-                    }
-                    switch preview {
-                    case .map(let html, let userScript):
-                        ucc.addUserScript(WKUserScript(
-                            source: userScript,
-                            injectionTime: .atDocumentStart,
-                            forMainFrameOnly: true
-                        ))
-                        wv.loadHTMLString(html, baseURL: Coordinator.baseURL)
-                    case .fallback(let html), .invalid(let html), .nothingToPreview(let html):
-                        wv.loadHTMLString(html, baseURL: Coordinator.baseURL)
-                    }
+            loadTask = Task(priority: .userInitiated) {
+                let preview = await Self.readAndRender(candidates: candidates, fileName: name)
+                // A newer file, or a cancel, owns the window. Do not apply
+                // this result and do not record a Recent.
+                guard self.loadGate.canApply(ticket: ticket, isCancelled: Task.isCancelled),
+                      self.currentURL == url else { return }
+                self.applyLoadedPreview(preview, url: url, webView: wv)
+            }
+        }
+
+        private func applyLoadedPreview(_ preview: RenderedPreview?, url: URL, webView wv: WKWebView) {
+            guard let preview else {
+                onInaccessible()
+                return
+            }
+            documentBaseURL = Coordinator.baseURL
+            let ucc = wv.configuration.userContentController
+            ucc.removeAllUserScripts()
+            // Finder, Open, drop, and Open Recent all arrive here.
+            // The Not Valid page is not an open, so it is left out of Recents.
+            // Nothing to Preview is a real file, so it is noted.
+            switch preview {
+            case .map, .fallback, .nothingToPreview:
+                RecentFiles.shared.note(url)
+            case .invalid:
+                break
+            }
+            switch preview {
+            case .map(let html, let userScript):
+                ucc.addUserScript(WKUserScript(
+                    source: userScript,
+                    injectionTime: .atDocumentStart,
+                    forMainFrameOnly: true
+                ))
+                wv.loadHTMLString(html, baseURL: Coordinator.baseURL)
+            case .fallback(let html), .invalid(let html), .nothingToPreview(let html):
+                wv.loadHTMLString(html, baseURL: Coordinator.baseURL)
+            }
+        }
+
+        /// Read and render away from the main actor. Cancellation belongs to
+        /// the load task that awaits this. The app target does not isolate
+        /// the module to the main actor, so `renderFilePreview` stays here.
+        @concurrent
+        private static func readAndRender(candidates: [URL], fileName: String) async -> RenderedPreview? {
+            for candidate in candidates {
+                if Task.isCancelled { return nil }
+                if let data = contents(of: candidate) {
+                    if Task.isCancelled { return nil }
+                    return renderFilePreview(data: data, fileName: fileName)
                 }
             }
+            return nil
         }
 
         private nonisolated static func contents(of url: URL) -> Data? {

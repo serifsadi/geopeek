@@ -11,6 +11,7 @@ import SwiftUI
 private let viewerWindowID = "viewer"
 
 @main
+@MainActor
 struct GeoPeekApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
@@ -29,6 +30,7 @@ struct GeoPeekApp: App {
     }
 }
 
+@MainActor
 struct ViewerCommands: Commands {
     @FocusedValue(\.fileURL) private var focusedFile
     @Environment(\.openWindow) private var openWindow
@@ -68,12 +70,14 @@ extension FocusedValues {
     @Entry var fileURL: Binding<URL?>?
 }
 
+@MainActor
 func openRecent(_ url: URL, openWindow: OpenWindowAction) {
     openWindow(value: url)
 }
 
 /// Finder and `open` deliver every URL here. `openWindow` creates a window
 /// for each one, or brings forward the window that already has that URL.
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var openWindow: OpenWindowAction?
     private var queued: [URL] = []
