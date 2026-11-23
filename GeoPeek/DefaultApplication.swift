@@ -21,7 +21,8 @@ import UniformTypeIdentifiers
 final class DefaultApplication {
     static let shared = DefaultApplication()
 
-    /// True when this bundle is already the default app for every declared type.
+    /// True when this bundle is already the default for every content type that resolved.
+    /// False when none resolved, so the missing-type alert can still be shown.
     private(set) var isDefaultForAll = false
     /// True while the consent dialogs are open, so a second click does not stack them.
     private(set) var isSetting = false
@@ -45,7 +46,8 @@ final class DefaultApplication {
         // sequence's own refresh, and would read Launch Services mid-prompt.
         guard !isSetting else { return }
         let types = Self.contentTypes
-        guard types.count == Self.typeIdentifiers.count else {
+        // Unresolved identifiers are left out. An empty list stays enabled.
+        guard !types.isEmpty else {
             isDefaultForAll = false
             return
         }
