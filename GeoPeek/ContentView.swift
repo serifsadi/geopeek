@@ -15,6 +15,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @Binding var fileURL: URL?
     @State private var isDragOver = false
+    @State private var windowLoad = WindowLoad()
 
     var body: some View {
         ZStack {
@@ -23,21 +24,23 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 WelcomeView(isDragOver: $isDragOver, onOpen: {
-                    openDocument(into: $fileURL)
+                    openDocument(into: $fileURL, load: windowLoad)
                 }, onPaste: {
-                    pasteGeoJSON(into: $fileURL)
+                    pasteGeoJSON(into: $fileURL, load: windowLoad)
                 })
             }
         }
         .frame(minWidth: 640, minHeight: 480)
         .navigationTitle(windowTitle)
         .focusedSceneValue(\.fileURL, $fileURL)
+        .focusedSceneValue(\.windowLoad, windowLoad)
         .toolbar {
             // Native macOS back button — only visible while a file is open.
             // QL/Preview has no toolbar, so this never appears there.
             if fileURL != nil {
                 ToolbarItem(placement: .navigation) {
                     Button {
+                        windowLoad.supersede()
                         fileURL = nil
                     } label: {
                         Label("Back", systemImage: "chevron.left")
@@ -50,10 +53,14 @@ struct ContentView: View {
         .onDrop(of: [.fileURL], isTargeted: $isDragOver) { providers in
             guard let provider = providers.first else { return false }
             // NSURL (not URL) conforms to NSItemProviderReading on macOS
+            let load = windowLoad
             _ = provider.loadObject(ofClass: NSURL.self) { (nsurl, _) in
                 guard let url = nsurl as? URL, isSupportedDocument(url) else { return }
                 DispatchQueue.main.async {
-                    fileURL = url
+                    MainActor.assumeIsolated {
+                        load.supersede()
+                        fileURL = url
+                    }
                 }
             }
             return true
@@ -75,7 +82,7 @@ struct ContentView: View {
 }
 
 @MainActor
-func openDocument(into fileURL: Binding<URL?>) {
+func openDocument(into fileURL: Binding<URL?>, load: WindowLoad) {
     let panel = NSOpenPanel()
     panel.canChooseFiles           = true
     panel.canChooseDirectories     = false
@@ -83,12 +90,13 @@ func openDocument(into fileURL: Binding<URL?>) {
     panel.allowedContentTypes      = supportedContentTypes()
     panel.prompt = "Open"
     if panel.runModal() == .OK, let url = panel.url {
+        load.supersede()
         fileURL.wrappedValue = url
     }
 }
 
 @MainActor
-func pasteGeoJSON(into fileURL: Binding<URL?>) {
+func pasteGeoJSON(into fileURL: Binding<URL?>, load: WindowLoad) {
     guard let string = NSPasteboard.general.string(forType: .string),
           !string.isEmpty else {
         showPasteError("The clipboard is empty or doesn't contain text.")
@@ -98,17 +106,58 @@ func pasteGeoJSON(into fileURL: Binding<URL?>) {
         showPasteError("Could not process clipboard data.")
         return
     }
-    // A unique directory keeps two pastes from sharing one window.
-    let name = parseGeoJSON(data) != nil ? "Pasted.geojson" : "Pasted.json"
-    let directory = URL(fileURLWithPath: NSTemporaryDirectory())
-        .appendingPathComponent("GeoPeek-\(UUID().uuidString)", isDirectory: true)
-    let tempURL = directory.appendingPathComponent(name)
-    do {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try data.write(to: tempURL, options: .atomic)
-        fileURL.wrappedValue = tempURL
-    } catch {
-        showPasteError("Could not process clipboard data.")
+    // Same ticket as other in-window loads. A later open, drop, paste, or
+    // Back wins; this paste must not set the window afterwards.
+    let ticket = load.begin()
+    load.store(Task(priority: .userInitiated) {
+        let name = await pastedFileName(for: data)
+        guard load.canApply(ticket: ticket, isCancelled: Task.isCancelled) else { return }
+        // A unique directory keeps two pastes from sharing one window.
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("GeoPeek-\(UUID().uuidString)", isDirectory: true)
+        let tempURL = directory.appendingPathComponent(name)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try data.write(to: tempURL, options: .atomic)
+            fileURL.wrappedValue = tempURL
+        } catch {
+            showPasteError("Could not process clipboard data.")
+        }
+    })
+}
+
+/// `Pasted.geojson` when the clipboard is GeoJSON, otherwise `Pasted.json`.
+/// The whole value is parsed off the main actor. The strings stay the same.
+@concurrent
+private func pastedFileName(for data: Data) async -> String {
+    if Task.isCancelled { return "Pasted.json" }
+    return parseGeoJSON(data) != nil ? "Pasted.geojson" : "Pasted.json"
+}
+
+/// One window's in-flight paste. Open, drop, another paste, and Back take
+/// the ticket away so a late paste cannot replace that request.
+@MainActor
+final class WindowLoad {
+    private var gate = FileLoadGate()
+    private var task: Task<Void, Never>?
+
+    @discardableResult
+    func begin() -> UInt64 {
+        task?.cancel()
+        return gate.begin()
+    }
+
+    func supersede() {
+        task?.cancel()
+        gate.invalidate()
+    }
+
+    func canApply(ticket: UInt64, isCancelled: Bool) -> Bool {
+        gate.canApply(ticket: ticket, isCancelled: isCancelled)
+    }
+
+    func store(_ task: Task<Void, Never>) {
+        self.task = task
     }
 }
 

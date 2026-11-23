@@ -80,6 +80,18 @@ func run() {
     check(leftNoted.isEmpty, "a load left behind was recorded: \(leftNoted)")
     check(leftCleared.isEmpty, "a load left behind cleared the window: \(leftCleared)")
 
+    // Paste takes a ticket while it chooses a name. A later open takes the
+    // next ticket, so the paste must not replace that file.
+    var pasteThenOpen = FileLoadGate()
+    let paste = pasteThenOpen.begin()
+    let opened = pasteThenOpen.begin()
+    check(!pasteThenOpen.canApply(ticket: paste, isCancelled: false),
+          "a paste must not replace a newer load")
+    check(pasteThenOpen.canApply(ticket: opened, isCancelled: false),
+          "the load after a paste may apply")
+    check(!pasteThenOpen.canApply(ticket: paste, isCancelled: true),
+          "a cancelled paste must not apply")
+
     var rapid = FileLoadGate()
     var tickets: [UInt64] = []
     for _ in 0..<50 {

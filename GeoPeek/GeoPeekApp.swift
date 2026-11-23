@@ -33,15 +33,18 @@ struct GeoPeekApp: App {
 @MainActor
 struct ViewerCommands: Commands {
     @FocusedValue(\.fileURL) private var focusedFile
+    @FocusedValue(\.windowLoad) private var windowLoad
     @Environment(\.openWindow) private var openWindow
     var body: some Commands {
         let urls = RecentFiles.shared.urls
         CommandGroup(after: .newItem) {
             Button("Open File…") {
-                if let focusedFile { openDocument(into: focusedFile) }
+                if let focusedFile, let windowLoad {
+                    openDocument(into: focusedFile, load: windowLoad)
+                }
             }
             .keyboardShortcut("o", modifiers: .command)
-            .disabled(focusedFile == nil)
+            .disabled(focusedFile == nil || windowLoad == nil)
             // A WindowGroup app does not get the document Open Recent menu.
             Menu("Open Recent") {
                 if urls.isEmpty {
@@ -58,16 +61,19 @@ struct ViewerCommands: Commands {
         }
         CommandGroup(replacing: .pasteboard) {
             Button("Paste GeoJSON") {
-                if let focusedFile { pasteGeoJSON(into: focusedFile) }
+                if let focusedFile, let windowLoad {
+                    pasteGeoJSON(into: focusedFile, load: windowLoad)
+                }
             }
             .keyboardShortcut("v", modifiers: .command)
-            .disabled(focusedFile == nil)
+            .disabled(focusedFile == nil || windowLoad == nil)
         }
     }
 }
 
 extension FocusedValues {
     @Entry var fileURL: Binding<URL?>?
+    @Entry var windowLoad: WindowLoad?
 }
 
 @MainActor
