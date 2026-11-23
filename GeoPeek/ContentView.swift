@@ -58,7 +58,10 @@ struct ContentView: View {
                 guard let url = nsurl as? URL, isSupportedDocument(url) else { return }
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated {
-                        load.supersede()
+                        // Dropping the file already on screen must not cancel a paste.
+                        if isDifferentFile(url, from: fileURL) {
+                            load.supersede()
+                        }
                         fileURL = url
                     }
                 }
@@ -93,9 +96,18 @@ func openDocument(into fileURL: Binding<URL?>, load: WindowLoad) {
     panel.allowedContentTypes      = supportedContentTypes()
     panel.prompt = "Open"
     if panel.runModal() == .OK, let url = panel.url {
-        load.supersede()
+        // Opening the file already on screen must not cancel a paste.
+        if isDifferentFile(url, from: fileURL.wrappedValue) {
+            load.supersede()
+        }
         fileURL.wrappedValue = url
     }
+}
+
+/// True when this URL is not the file already shown.
+private func isDifferentFile(_ url: URL, from current: URL?) -> Bool {
+    guard let current else { return true }
+    return url != current
 }
 
 @MainActor
@@ -109,9 +121,10 @@ func pasteGeoJSON(into fileURL: Binding<URL?>, load: WindowLoad) {
         showPasteError("Could not process clipboard data.")
         return
     }
-    // Same ticket as other in-window loads. A later open, drop, paste, or
-    // Back wins; this paste must not set the window afterwards. Closing the
-    // window cancels it too, so the temporary file is not written after that.
+    // Same ticket as other in-window loads. A later open or drop of a
+    // different file, another paste, or Back wins; this paste must not set
+    // the window afterwards. Closing the window cancels it too. A write
+    // already started may finish, and that temporary file is then deleted.
     let ticket = load.begin()
     load.store(Task(priority: .userInitiated) {
         let written = await writePastedFile(data)
@@ -134,7 +147,8 @@ func pasteGeoJSON(into fileURL: Binding<URL?>, load: WindowLoad) {
 
 /// Name and temporary file for one paste. `Pasted.geojson` when the clipboard
 /// is GeoJSON, otherwise `Pasted.json`. Both the parse and the write run off
-/// the main actor. A cancelled paste writes nothing.
+/// the main actor. A write already started may finish after cancellation;
+/// the directory is removed and the file is not kept.
 @concurrent
 private func writePastedFile(_ data: Data) async -> PasteWrite? {
     if Task.isCancelled { return nil }
@@ -148,6 +162,7 @@ private func writePastedFile(_ data: Data) async -> PasteWrite? {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try data.write(to: tempURL, options: .atomic)
     } catch {
+        try? FileManager.default.removeItem(at: directory)
         return .failed
     }
     if Task.isCancelled {

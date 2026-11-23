@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Opening another file, or leaving the file, while it is still loading keeps the window on the latest request. The earlier result is discarded and is not added to Recents. Reading the file and preparing the preview run off the main thread, so a large file does not freeze the window.
-- Paste from Clipboard chooses Pasted.geojson or Pasted.json off the main thread, and writes that temporary file there too. A paste still in progress does not replace a file opened after it, does not finish writing after the window closes, and stays out of Recents.
+- Paste from Clipboard chooses Pasted.geojson or Pasted.json off the main thread, and writes that temporary file there too. A paste still in progress does not replace a different file opened or dropped after it, and stays out of Recents. Closing the window during that write may let the write finish; the temporary file is then deleted.
 
 ## 0.4.0
 
