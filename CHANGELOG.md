@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.4.1 - 2026-11-23
 
-- The GeoPeek menu, just below About GeoPeek, and the welcome screen offer Set as Default…. macOS asks for each of GeoJSON, KML, KMZ, and GPX that GeoPeek does not already open, and GeoPeek becomes the default only if those prompts are approved. The action is unavailable when GeoPeek is already the default for all four. The handler rank stays Alternate.
+- The GeoPeek menu, just below About GeoPeek, and the welcome screen offer a Set as Default… command. macOS asks for each of GeoJSON, KML, KMZ, and GPX that GeoPeek does not already open, and GeoPeek becomes the default only if those prompts are approved. The action is unavailable when GeoPeek is already the default for all four. The handler rank stays Alternate.
 - Opening another file, or leaving the file, while it is still loading keeps the window on the latest request. The earlier result is discarded and is not added to Recents. Reading the file and preparing the preview run off the main thread, so a large file does not freeze the window.
 - Paste from Clipboard chooses Pasted.geojson or Pasted.json off the main thread, and writes that temporary file there too. A paste still in progress does not replace a different file opened or dropped after it, and stays out of Recents. Closing the window during that write may let the write finish; the temporary file is then deleted.
 - A coordinate that is not a real number, or a latitude outside -90 to 90, or a longitude outside -540 to 540, is left out of a KML, KMZ, or GPX file. A longitude past -180 to 180 is kept, up to 540. An elevation that is not a real number is left out. Those positions are removed from the GeoJSON data sent to the map, not from the GeoJSON file. A feature with nothing left to draw keeps its properties and has no geometry. An empty FeatureCollection still opens.
