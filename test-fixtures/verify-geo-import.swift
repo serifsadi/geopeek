@@ -12,6 +12,14 @@
 //
 // test-fixtures/sample.kmz is sample.kml deflated as doc.kml, written after
 // a root other.kml and a nested kml, so the reader has to choose doc.kml.
+//
+// nonfinite.gpx and nonfinite.kml carry NaN, infinity, a latitude of 95,
+// longitude 181, longitude 540, and longitude 99999. latitude-95.geojson
+// repeats the latitude and the two longitudes.
+// with-image.kmz is doc.kml plus a PNG. zip-bomb.kmz points 32 central-directory
+// entries at one deflate stream of 2_000_000 zero bytes (about 64 MB if every
+// entry were inflated) and is a few kilobytes on disk. lying-size.kmz declares
+// doc.kml shorter than its deflate stream.
 
 import Foundation
 #if canImport(FoundationXML)
@@ -110,6 +118,8 @@ func run() throws {
     checkCDATA()
     checkExtendedDataName()
     checkSinglePointGPX()
+    try checkNonFiniteCoordinates()
+    try checkKMZInflate()
     checkLargeKML()
     try checkRenderHandoff(kml: kml, gpx: gpx, kmz: kmz)
 }
@@ -608,6 +618,602 @@ func propertyKeyOrders(in data: Data) -> [[String]] {
     return orders
 }
 
+func checkNonFiniteCoordinates() throws {
+    let gpx = try load("nonfinite.gpx")
+    guard let gpxFeatures = importedFeatures(gpx, .gpx) else {
+        fail("nonfinite.gpx did not convert")
+        return
+    }
+    let gpxNames = gpxFeatures.compactMap { ($0["properties"] as? [String: Any])?["name"] as? String }
+    check(gpxNames == ["NoEle", "Good", "Wide", "Limit", "Road", "Ridge"], "nonfinite GPX names \(gpxNames)")
+    for absent in ["Bad", "High", "Far"] {
+        check(!gpxNames.contains(absent), "\(absent) should have been dropped")
+    }
+    guard let wideGPX = namedFeature(gpxFeatures, "Wide"),
+          let noEle = namedFeature(gpxFeatures, "NoEle"),
+          let good = namedFeature(gpxFeatures, "Good"),
+          let road = namedFeature(gpxFeatures, "Road"),
+          let ridge = namedFeature(gpxFeatures, "Ridge") else { return }
+    check(geometry(wideGPX)["coordinates"] as? [Double] == [181, 10], "longitude 181 was dropped")
+    check(geometry(noEle)["coordinates"] as? [Double] == [-122.4, 37.8],
+          "NaN elevation should leave the position without altitude \(String(describing: geometry(noEle)["coordinates"]))")
+    let noEleProps = noEle["properties"] as? [String: Any] ?? [:]
+    check(noEleProps["ele"] == nil, "NaN elevation was kept as a property")
+    check(noEleProps["name"] as? String == "NoEle", "NoEle lost its name")
+    guard let goodCoordinates = geometry(good)["coordinates"] else {
+        fail("Good has no coordinates")
+        return
+    }
+    check(canon(goodCoordinates) == canon([2.0, 1.0, 12.5]),
+          "finite elevation was dropped \(canon(goodCoordinates))")
+    check((good["properties"] as? [String: Any])?["ele"] as? Double == 12.5, "Good elevation property")
+    check(geometry(road)["type"] as? String == "LineString", "route with a dropped point should stay a line")
+    guard let roadCoordinates = geometry(road)["coordinates"],
+          let ridgeCoordinates = geometry(ridge)["coordinates"] else {
+        fail("Road or Ridge has no coordinates")
+        return
+    }
+    check(canon(roadCoordinates) == canon([[20.0, 10.0], [21.0, 11.0]]),
+          "Road kept the nan point \(canon(roadCoordinates))")
+    check(canon(ridgeCoordinates) == canon([[5.0, 4.0, 1.0], [7.0, 6.0, 2.0]]),
+          "Ridge kept the infinite point \(canon(ridgeCoordinates))")
+
+    switch renderFilePreview(data: gpx, fileName: "nonfinite.gpx") {
+    case .map:
+        break
+    case .fallback, .invalid, .nothingToPreview:
+        fail("nonfinite.gpx should render the positions that remain")
+    }
+
+    let onlyBad = Data("<gpx><wpt lat=\"nan\" lon=\"inf\"><ele>NaN</ele><name>Gone</name></wpt></gpx>".utf8)
+    check(geoJSONData(from: onlyBad, kind: .gpx) == nil, "a GPX with no finite position converted")
+    checkNotValid(onlyBad, "bad.gpx", "GPX")
+
+    let edge = Data("<gpx><wpt lat=\"90\" lon=\"-180\"><name>NW</name></wpt><wpt lat=\"-90\" lon=\"180\"><name>SE</name></wpt></gpx>".utf8)
+    guard let edges = importedFeatures(edge, .gpx), edges.count == 2 else {
+        fail("latitude 90 or longitude 180 was dropped")
+        return
+    }
+    check(geometry(edges[0])["coordinates"] as? [Double] == [-180, 90], "NW edge coordinates")
+    check(geometry(edges[1])["coordinates"] as? [Double] == [180, -90], "SE edge coordinates")
+
+    let over = Data("<gpx><wpt lat=\"90.0001\" lon=\"0\"/><wpt lat=\"0\" lon=\"-180.0001\"><name>West</name></wpt><wpt lat=\"10\" lon=\"181\"><name>East</name></wpt><wpt lat=\"1\" lon=\"2\"><name>Inside</name></wpt></gpx>".utf8)
+    guard let inside = importedFeatures(over, .gpx), inside.count == 3 else {
+        fail("a longitude past 180 was dropped, or a latitude past 90 was kept")
+        return
+    }
+    check((inside[0]["properties"] as? [String: Any])?["name"] as? String == "West", "West was dropped")
+    let west = geometry(inside[0])["coordinates"] as? [Double] ?? []
+    check(west.count == 2 && near(west[0], -180.0001) && near(west[1], 0), "West coordinates \(west)")
+    check((inside[1]["properties"] as? [String: Any])?["name"] as? String == "East", "East was dropped")
+    check(geometry(inside[1])["coordinates"] as? [Double] == [181, 10], "East coordinates")
+    check((inside[2]["properties"] as? [String: Any])?["name"] as? String == "Inside", "the in-range waypoint was dropped")
+
+    let textEle = Data("<gpx><wpt lat=\"1\" lon=\"2\"><ele>high</ele><name>Hill</name></wpt></gpx>".utf8)
+    guard let hill = importedFeatures(textEle, .gpx), hill.count == 1 else {
+        fail("a non-numeric elevation dropped the waypoint")
+        return
+    }
+    check(geometry(hill[0])["coordinates"] as? [Double] == [2, 1], "non-numeric elevation was used as altitude")
+    check((hill[0]["properties"] as? [String: Any])?["ele"] as? String == "high", "non-numeric elevation text was dropped")
+
+    let kml = try load("nonfinite.kml")
+    guard let kmlFeatures = importedFeatures(kml, .kml) else {
+        fail("nonfinite.kml did not convert")
+        return
+    }
+    let kmlNames = kmlFeatures.compactMap { ($0["properties"] as? [String: Any])?["name"] as? String }
+    check(kmlNames == ["Wide", "Limit", "Alt", "Line", "Track"], "nonfinite KML names \(kmlNames)")
+    for absent in ["Huge", "Nan", "Inf", "High", "Far"] {
+        check(!kmlNames.contains(absent), "\(absent) should have been dropped")
+    }
+    guard let wideKML = namedFeature(kmlFeatures, "Wide"),
+          let limitKML = namedFeature(kmlFeatures, "Limit"),
+          let alt = namedFeature(kmlFeatures, "Alt"),
+          let line = namedFeature(kmlFeatures, "Line"),
+          let track = namedFeature(kmlFeatures, "Track"),
+          let altCoordinates = geometry(alt)["coordinates"],
+          let lineCoordinates = geometry(line)["coordinates"],
+          let trackCoordinates = geometry(track)["coordinates"] else { return }
+    check(geometry(wideKML)["coordinates"] as? [Double] == [181, 10], "KML longitude 181 was dropped")
+    check(geometry(limitKML)["coordinates"] as? [Double] == [540, 2], "KML longitude 540 was dropped")
+    check(canon(altCoordinates) == canon([-122.4, 37.8]),
+          "infinite altitude was kept \(canon(altCoordinates))")
+    check(canon(lineCoordinates) == canon([[0.0, 0.0], [1.0, 1.0]]), "line kept a non-finite position")
+    check(canon(trackCoordinates) == canon([[-120.0, 35.0, 100.0], [-120.1, 35.1]]),
+          "track kept a non-finite position or altitude")
+
+    let onlyHuge = Data("<kml><Placemark><name>Huge</name><Point><coordinates>1e999,1</coordinates></Point></Placemark></kml>".utf8)
+    check(geoJSONData(from: onlyHuge, kind: .kml) == nil, "a KML with no finite position converted")
+    checkNotValid(onlyHuge, "huge.kml", "KML")
+
+    let geo = try load("latitude-95.geojson")
+    guard let meta = parseGeoJSON(geo) else {
+        fail("latitude-95.geojson did not parse")
+        return
+    }
+    check(meta.featureCount == 4, "latitude-95 feature count \(meta.featureCount)")
+    check(meta.vertexCount == 2, "latitude-95 vertex count \(meta.vertexCount)")
+    if let bounds = meta.bounds {
+        check(near(bounds.minLng, -122.4) && near(bounds.maxLng, 181)
+              && near(bounds.minLat, 10) && near(bounds.maxLat, 37.8),
+              "bounds \(bounds.minLng),\(bounds.minLat) \(bounds.maxLng),\(bounds.maxLat)")
+    } else {
+        fail("the in-range positions were left out of bounds")
+    }
+    let onlyHigh = Data(#"{"type":"Point","coordinates":[0,95]}"#.utf8)
+    guard let highMeta = parseGeoJSON(onlyHigh) else {
+        fail("a GeoJSON point at latitude 95 was rejected")
+        return
+    }
+    check(highMeta.bounds == nil, "latitude 95 was used as the map bounds")
+    check(highMeta.vertexCount == 0, "latitude 95 was counted")
+    check(makeMapHTML(meta: highMeta).contains("\"bounds\":null"), "the map page kept an out-of-range bounds")
+    let wide = Data(#"{"type":"Point","coordinates":[181,10]}"#.utf8)
+    guard let wideMeta = parseGeoJSON(wide), let wideBounds = wideMeta.bounds else {
+        fail("longitude 181 was left out of the map bounds")
+        return
+    }
+    check(wideMeta.vertexCount == 1, "longitude 181 was not counted")
+    check(near(wideBounds.minLng, 181) && near(wideBounds.maxLng, 181)
+          && near(wideBounds.minLat, 10) && near(wideBounds.maxLat, 10),
+          "longitude 181 bounds")
+    let page = makeMapHTML(meta: wideMeta)
+    check(page.contains("c[1] >= -90 && c[1] <= 90"), "featureBounds lost the latitude check")
+    check(page.contains("Math.abs(c[0]) <= 540"), "featureBounds lost the longitude limit")
+    check(page.contains("Array.isArray(c)"), "featureBounds does not guard its walk")
+    check(!page.contains("c[0] >= -180") && !page.contains("c[0] <= 180"),
+          "featureBounds still rejects a longitude past 180")
+    try checkFeatureBoundsGuard(page)
+
+    switch renderFilePreview(data: onlyHigh, fileName: "high.geojson") {
+    case .map(_, let script):
+        check(renderedFeatures(script)?.isEmpty == true, "latitude 95 was sent to the map")
+    case .invalid, .fallback, .nothingToPreview:
+        fail("filtering a point at latitude 95 made the file Not Valid")
+    }
+    let past = Data(#"{"type":"Point","coordinates":[540.1,1]}"#.utf8)
+    switch renderFilePreview(data: past, fileName: "past.geojson") {
+    case .map(_, let script):
+        check(renderedFeatures(script)?.isEmpty == true, "longitude 540.1 was sent to the map")
+    case .invalid, .fallback, .nothingToPreview:
+        fail("filtering longitude 540.1 made the file Not Valid")
+    }
+    let emptyCollection = Data(#"{"type":"FeatureCollection","features":[]}"#.utf8)
+    switch renderFilePreview(data: emptyCollection, fileName: "empty.geojson") {
+    case .map(_, let script):
+        guard let decoded = geoJSON(fromUserScript: script) else {
+            fail("empty FeatureCollection was not sent to the map")
+            return
+        }
+        check(decoded == emptyCollection, "empty FeatureCollection was rewritten")
+    case .invalid, .fallback, .nothingToPreview:
+        fail("an empty FeatureCollection was not opened")
+    }
+    let badFeatures = Data(#"{"type":"FeatureCollection","features":"x"}"#.utf8)
+    switch renderFilePreview(data: badFeatures, fileName: "bad-features.geojson") {
+    case .invalid(let html):
+        check(html.contains("Not Valid GeoJSON"), "a non-array features value opened the map")
+    case .map, .fallback, .nothingToPreview:
+        fail("features set to a string was not Not Valid")
+    }
+    let objectFeatures = Data(#"{"type":"FeatureCollection","features":{}}"#.utf8)
+    switch renderFilePreview(data: objectFeatures, fileName: "object-features.geojson") {
+    case .invalid:
+        break
+    case .map, .fallback, .nothingToPreview:
+        fail("features set to an object was not Not Valid")
+    }
+    let nullFeatures = Data(#"{"type":"FeatureCollection","features":null}"#.utf8)
+    switch renderFilePreview(data: nullFeatures, fileName: "null-features.geojson") {
+    case .map(_, let script):
+        guard let decoded = geoJSON(fromUserScript: script) else {
+            fail("a FeatureCollection with null features was not sent to the map")
+            return
+        }
+        check(decoded == nullFeatures, "null features was rewritten")
+    case .invalid, .fallback, .nothingToPreview:
+        fail("null features made the file Not Valid")
+    }
+    let shortRing = Data(#"""
+    {"type":"Feature","properties":{"name":"Short"},"geometry":{"type":"Polygon","coordinates":[[[0,0],[1,1],[0,0]]]}}
+    """#.utf8)
+    switch renderFilePreview(data: shortRing, fileName: "short-ring.geojson") {
+    case .map(_, let script):
+        guard let decoded = geoJSON(fromUserScript: script),
+              let feature = try? JSONSerialization.jsonObject(with: decoded) as? [String: Any] else {
+            fail("a short ring was not kept as a feature")
+            return
+        }
+        check((feature["properties"] as? [String: Any])?["name"] as? String == "Short", "short ring lost its name")
+        check(feature["geometry"] is NSNull, "a ring shorter than four positions was sent to the map")
+    case .invalid, .fallback, .nothingToPreview:
+        fail("a short ring made the file Not Valid")
+    }
+    let closedRing = Data(#"{"type":"Polygon","coordinates":[[[0,0],[1,0],[0,1],[0,0]]]}"#.utf8)
+    switch renderFilePreview(data: closedRing, fileName: "closed-ring.geojson") {
+    case .map(_, let script):
+        guard let decoded = geoJSON(fromUserScript: script) else {
+            fail("a closed ring was not sent to the map")
+            return
+        }
+        check(decoded == closedRing, "a closed ring of four positions was rewritten")
+    case .invalid, .fallback, .nothingToPreview:
+        fail("a closed ring was not drawn")
+    }
+
+    let limit = Data(#"{"type":"Point","coordinates":[-540,1]}"#.utf8)
+    switch renderFilePreview(data: limit, fileName: "limit.geojson") {
+    case .map(_, let script):
+        guard let decoded = geoJSON(fromUserScript: script) else {
+            fail("longitude -540 was rewritten or dropped")
+            return
+        }
+        check(decoded == limit, "a drawable GeoJSON point was rewritten")
+    case .fallback, .invalid, .nothingToPreview:
+        fail("longitude -540 was not drawn")
+    }
+
+    switch renderFilePreview(data: geo, fileName: "latitude-95.geojson") {
+    case .map(_, let script):
+        guard let decoded = geoJSON(fromUserScript: script),
+              let drawn = featureList(in: decoded) else {
+            fail("latitude-95.geojson was not sent to the map")
+            return
+        }
+        let drawnNames = drawn.compactMap { ($0["properties"] as? [String: Any])?["name"] as? String }
+        check(drawnNames == ["High", "Wide", "Ok", "Far"], "map features \(drawnNames)")
+        check(drawn.first?["geometry"] is NSNull, "High was removed instead of kept with null geometry")
+        check(drawn.last?["geometry"] is NSNull, "Far was removed instead of kept with null geometry")
+        guard let drawnMeta = parseGeoJSON(decoded) else {
+            fail("sanitized GeoJSON did not parse")
+            return
+        }
+        check(drawnMeta.featureCount == 4 && drawnMeta.vertexCount == 2, "sanitized counts")
+        if let bounds = drawnMeta.bounds {
+            check(near(bounds.minLng, -122.4) && near(bounds.maxLng, 181)
+                  && near(bounds.minLat, 10) && near(bounds.maxLat, 37.8),
+                  "sanitized bounds")
+        } else {
+            fail("sanitized GeoJSON lost its bounds")
+        }
+    case .fallback, .invalid, .nothingToPreview:
+        fail("latitude-95.geojson was not drawn")
+    }
+
+    let mixed = Data(#"""
+    {"type":"FeatureCollection","features":[
+      {"type":"Feature","properties":{"name":"Path"},"geometry":{"type":"LineString","coordinates":[[0,0],[1,95],[99999,1],[540,2],[2,2]]}},
+      {"type":"Feature","properties":{"name":"Gone"},"geometry":{"type":"Point","coordinates":[0,95]}},
+      {"type":"Feature","properties":{"name":"Thin"},"geometry":{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,95],[0,0]]]}},
+      {"type":"Feature","properties":{"name":"Ring"},"geometry":{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,95],[0,1],[0,0]]]}}
+    ]}
+    """#.utf8)
+    switch renderFilePreview(data: mixed, fileName: "mixed.geojson") {
+    case .map(_, let script):
+        guard let decoded = geoJSON(fromUserScript: script),
+              let drawn = featureList(in: decoded) else {
+            fail("mixed GeoJSON was not sent to the map")
+            return
+        }
+        let drawnNames = drawn.compactMap { ($0["properties"] as? [String: Any])?["name"] as? String }
+        check(drawnNames == ["Path", "Gone", "Thin", "Ring"], "mixed map features \(drawnNames)")
+        guard let path = namedFeature(drawn, "Path"),
+              let gone = namedFeature(drawn, "Gone"),
+              let thin = namedFeature(drawn, "Thin"),
+              let ring = namedFeature(drawn, "Ring"),
+              let pathCoordinates = geometry(path)["coordinates"],
+              let ringCoordinates = geometry(ring)["coordinates"] else { return }
+        check(canon(pathCoordinates) == canon([[0.0, 0.0], [540.0, 2.0], [2.0, 2.0]]),
+              "Path kept a bad position")
+        check(gone["geometry"] is NSNull, "Gone was removed instead of kept with null geometry")
+        check(thin["geometry"] is NSNull, "Thin was removed instead of kept with null geometry")
+        check(canon(ringCoordinates) == canon([
+            [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [0.0, 0.0]]
+        ]), "Ring kept a latitude of 95")
+    case .fallback, .invalid, .nothingToPreview:
+        fail("mixed GeoJSON was not drawn")
+    }
+
+    try checkNullGeometryPreservation()
+    try checkRingReclose()
+    try checkJSONBooleans()
+    try checkCoordinateWalks()
+    try checkKMLCoordinateScan()
+
+    let script = try String(contentsOfFile: "Shared/maplibre-gl.js", encoding: .utf8)
+    check(script.contains("\"5.24.1\""), "vendored MapLibre is not 5.24.1")
+    check(!script.contains("5.24.0"), "vendored MapLibre still names 5.24.0")
+}
+
+/// Whitespace-separated junk, nan, and inf must not shift the next lon,lat.
+/// A 2-component tuple and a 3-component tuple stay separate. A non-finite
+/// altitude is omitted. A longitude of 200 is kept. A latitude of 95 is not.
+func checkKMLCoordinateScan() throws {
+    let text = """
+    <?xml version="1.0"?>
+    <kml><Placemark><name>Scan</name><LineString><coordinates>
+    nan,5 inf,10 -inf,1
+    1,2
+    junk
+    3,4,5
+    foo 6,7
+    8,9,nan
+    10, 11, 12
+    1e999,2
+    200,45
+    10,95
+    abc,def
+    13,14,15 16,17
+    </coordinates></LineString></Placemark></kml>
+    """
+    guard let features = importedFeatures(Data(text.utf8), .kml), features.count == 1 else {
+        fail("KML coordinate scan did not keep a line")
+        return
+    }
+    let expected: [[Double]] = [
+        [1, 2],
+        [3, 4, 5],
+        [6, 7],
+        [8, 9],
+        [10, 11, 12],
+        [200, 45],
+        [13, 14, 15],
+        [16, 17]
+    ]
+    guard let scanned = geometry(features[0])["coordinates"] else {
+        fail("KML coordinate scan kept no coordinates")
+        return
+    }
+    check(canon(scanned) == canon(expected), "KML coordinates were misread \(canon(scanned))")
+}
+
+func checkFeatureBoundsGuard(_ html: String) throws {
+    guard let start = html.range(of: "function featureBounds(f) {") else {
+        fail("featureBounds missing")
+        return
+    }
+    let rest = html[start.lowerBound...]
+    guard let end = rest.range(of: "function buildTable") else {
+        fail("featureBounds end missing")
+        return
+    }
+    let function = String(rest[..<end.lowerBound])
+    let program = """
+    \(function)
+    function LngLatBounds() {
+      this.points = [];
+      this.extend = function(p) { this.points.push(p); };
+    }
+    var maplibregl = { LngLatBounds: LngLatBounds };
+    var bounds = featureBounds({ geometry: { type: 'MultiPoint', coordinates: [null, true, [10, 20], [99999, 5], [0, 95], [540, 1], [-540, -90], [540.1, 1]] } });
+    if (!bounds || bounds.points.length !== 3) throw new Error('flat ' + (bounds && bounds.points.length));
+    var nested = featureBounds({ geometry: { type: 'MultiLineString', coordinates: [[null, [1, 2]], [[181, 3], false]] } });
+    if (!nested || nested.points.length !== 2) throw new Error('nested ' + (nested && nested.points.length));
+    if (featureBounds({ geometry: { type: 'LineString', coordinates: [null, false] } }) !== null) throw new Error('empty');
+    var malformed = featureBounds({ geometry: { type: 'LineString', coordinates: [[1, [2, 3]], [4, 5]] } });
+    if (!malformed || malformed.points.length !== 2 || malformed.points[0][0] !== 2) throw new Error('malformed ' + (malformed && malformed.points.length));
+    if (featureBounds({ geometry: { type: 'Nope', coordinates: [4, 5] } }) !== null) throw new Error('unknown type');
+    var collection = featureBounds({ geometry: { type: 'GeometryCollection', geometries: [
+      null,
+      { type: 'Point', coordinates: [4, 5] },
+      { type: 'LineString', coordinates: [[6, 7], [true, false]] },
+      { type: 'Nope', coordinates: [1, 1] },
+      { type: 'GeometryCollection', geometries: [{ type: 'Point', coordinates: [8, 9] }] }
+    ] } });
+    if (!collection || collection.points.length !== 3) throw new Error('collection ' + (collection && collection.points.length));
+    """
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("geopeek-feature-bounds.js")
+    try program.write(to: url, atomically: true, encoding: .utf8)
+    let node = Process()
+    node.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    node.arguments = ["node", url.path]
+    let err = Pipe()
+    node.standardError = err
+    try node.run()
+    node.waitUntilExit()
+    let text = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    check(node.terminationStatus == 0, "featureBounds rejected a malformed coordinate: \(text)")
+}
+
+func namedFeature(_ features: [[String: Any]], _ name: String) -> [String: Any]? {
+    guard let found = feature(features, name) else {
+        fail("missing feature \(name)")
+        return nil
+    }
+    return found
+}
+
+func renderedFeatures(_ script: String) -> [[String: Any]]? {
+    guard let decoded = geoJSON(fromUserScript: script) else { return nil }
+    if let features = featureList(in: decoded) { return features }
+    guard let object = try? JSONSerialization.jsonObject(with: decoded) as? [String: Any],
+          object["type"] as? String == "FeatureCollection",
+          let features = object["features"] as? [Any] else { return nil }
+    return features.isEmpty ? [] : nil
+}
+
+func checkNullGeometryPreservation() throws {
+    let file = try load("null-geometry.geojson")
+    switch renderFilePreview(data: file, fileName: "null-geometry.geojson") {
+    case .map(_, let script):
+        guard let drawn = renderedFeatures(script) else {
+            fail("null-geometry.geojson was not sent to the map")
+            return
+        }
+        let names = drawn.compactMap { ($0["properties"] as? [String: Any])?["name"] as? String }
+        check(names == ["Unlocated", "Place", "Bad"], "null-geometry features \(names)")
+        guard let unlocated = namedFeature(drawn, "Unlocated"),
+              let place = namedFeature(drawn, "Place"),
+              let bad = namedFeature(drawn, "Bad") else { return }
+        check(unlocated["geometry"] is NSNull, "a null geometry was removed")
+        check((unlocated["properties"] as? [String: Any])?["note"] as? String == "kept",
+              "Unlocated lost a property")
+        check(geometry(place)["coordinates"] as? [Double] == [10, 20], "Place coordinates changed")
+        check(bad["geometry"] is NSNull, "Bad was removed instead of kept with null geometry")
+        check((bad["properties"] as? [String: Any])?["name"] as? String == "Bad", "Bad lost its name")
+    case .invalid, .fallback, .nothingToPreview:
+        fail("null-geometry.geojson was not opened")
+    }
+}
+
+func checkRingReclose() throws {
+    let file = try load("reclose-ring.geojson")
+    switch renderFilePreview(data: file, fileName: "reclose-ring.geojson") {
+    case .map(_, let script):
+        guard let drawn = renderedFeatures(script),
+              let reclosed = namedFeature(drawn, "Reclosed"),
+              let short = namedFeature(drawn, "Short"),
+              let coordinates = geometry(reclosed)["coordinates"] else { return }
+        check(canon(coordinates) == canon([[[1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [1.0, 0.0]]]),
+              "ring was not reclosed \(canon(coordinates))")
+        check(short["geometry"] is NSNull, "a ring shorter than four positions was kept")
+        check((short["properties"] as? [String: Any])?["name"] as? String == "Short", "Short lost its name")
+    case .invalid, .fallback, .nothingToPreview:
+        fail("reclose-ring.geojson was not opened")
+    }
+}
+
+func checkCoordinateWalks() throws {
+    let mixed = Data(#"""
+    {"type":"GeometryCollection","geometries":[null,{"type":"Point","coordinates":[4,5]},{"type":"Nope","coordinates":[8,9]}]}
+    """#.utf8)
+    guard let mixedMeta = parseGeoJSON(mixed), let mixedBounds = mixedMeta.bounds else {
+        fail("a GeometryCollection with a null member was not counted")
+        return
+    }
+    check(mixedMeta.vertexCount == 1, "a null GeometryCollection member hid a point \(mixedMeta.vertexCount)")
+    check(near(mixedBounds.minLng, 4) && near(mixedBounds.minLat, 5)
+          && near(mixedBounds.maxLng, 4) && near(mixedBounds.maxLat, 5),
+          "an unknown geometry type was counted")
+    let malformed = Data(#"""
+    {"type":"LineString","coordinates":[[1,[2,3]],[4,5]]}
+    """#.utf8)
+    guard let malformedMeta = parseGeoJSON(malformed), let malformedBounds = malformedMeta.bounds else {
+        fail("a position whose second value is an array was not walked")
+        return
+    }
+    check(malformedMeta.vertexCount == 2, "malformed position count \(malformedMeta.vertexCount)")
+    check(near(malformedBounds.minLng, 2) && near(malformedBounds.minLat, 3)
+          && near(malformedBounds.maxLng, 4) && near(malformedBounds.maxLat, 5),
+          "the nested position was skipped")
+}
+
+func checkJSONBooleans() throws {
+    let file = Data(#"""
+    {"type":"FeatureCollection","features":[
+      {"type":"Feature","properties":{"name":"Bool"},"geometry":{"type":"Point","coordinates":[true,false]}},
+      {"type":"Feature","properties":{"name":"One"},"geometry":{"type":"Point","coordinates":[1,0]}}
+    ]}
+    """#.utf8)
+    guard let meta = parseGeoJSON(file), let bounds = meta.bounds else {
+        fail("a point at [1, 0] was not counted")
+        return
+    }
+    check(meta.vertexCount == 1, "a JSON boolean was counted \(meta.vertexCount)")
+    check(near(bounds.minLng, 1) && near(bounds.minLat, 0) && near(bounds.maxLng, 1) && near(bounds.maxLat, 0),
+          "boolean coordinates were used as bounds")
+    switch renderFilePreview(data: file, fileName: "bool.geojson") {
+    case .map(_, let script):
+        guard let drawn = renderedFeatures(script),
+              let flag = namedFeature(drawn, "Bool"),
+              let one = namedFeature(drawn, "One") else { return }
+        check(flag["geometry"] is NSNull, "boolean coordinates were sent to the map")
+        check(geometry(one)["coordinates"] as? [Double] == [1, 0], "the number 1 was treated as a boolean")
+    case .invalid, .fallback, .nothingToPreview:
+        fail("boolean coordinates made the file Not Valid")
+    }
+}
+
+func near(_ a: Double, _ b: Double) -> Bool {
+    abs(a - b) < 1e-9
+}
+
+func checkKMZInflate() throws {
+    let image = try load("with-image.kmz")
+    let names = zipNames(image)
+    check(names == ["doc.kml", "files/photo.png"] || (names.contains("doc.kml") && names.contains("files/photo.png")),
+          "with-image.kmz entries \(names)")
+    guard let photo = importedFeatures(image, .kmz), photo.count == 1 else {
+        fail("with-image.kmz did not convert")
+        return
+    }
+    check((photo[0]["properties"] as? [String: Any])?["name"] as? String == "Photo Stop",
+          "with-image.kmz did not read doc.kml")
+    check(canon(geometry(photo[0])["coordinates"]!) == canon([-122.4, 37.8, 12.0]),
+          "with-image coordinates \(canon(geometry(photo[0])["coordinates"]!))")
+
+    let lying = try load("lying-size.kmz")
+    check(featureName(in: lying) == nil, "a KMZ whose KML expands past its declared size was read")
+    checkNotValid(lying, "lying-size.kmz", "KMZ")
+
+    let bomb = try load("zip-bomb.kmz")
+    check(bomb.count < 32_000, "zip bomb is \(bomb.count) bytes on disk")
+    let bombNames = zipNames(bomb)
+    check(bombNames.contains("doc.kml") && bombNames.filter { $0.hasSuffix(".bin") }.count == 32,
+          "zip bomb central directory \(bombNames)")
+    let beforeKB = highWaterKB()
+    check(featureName(in: bomb) == "Kept", "zip bomb did not read doc.kml")
+    if let beforeKB, let afterKB = highWaterKB() {
+        check(afterKB - beforeKB < 16_000,
+              "zip bomb inflated \(afterKB - beforeKB) KB; only doc.kml should be unpacked")
+    }
+    guard let kept = importedFeatures(bomb, .kmz), kept.count == 1 else {
+        fail("zip bomb doc.kml did not convert")
+        return
+    }
+    check(geometry(kept[0])["coordinates"] as? [Double] == [9, 8], "zip bomb coordinates")
+
+    let doc = Data("<?xml version=\"1.0\"?><kml><Placemark><name>Document</name><Point><coordinates>1,2</coordinates></Point></Placemark></kml>".utf8)
+    let valid = storedZip([("doc.kml", doc)])
+    check(featureName(in: valid) == "Document", "stored doc.kml with a matching CRC should be read")
+    check(featureName(in: corruptCentralCRC(valid)) == nil, "a KMZ with a bad CRC was read")
+}
+
+/// Peak resident set, in kilobytes, where the platform reports it.
+func highWaterKB() -> Int? {
+    #if os(Linux)
+    guard let text = try? String(contentsOfFile: "/proc/self/status", encoding: .utf8) else { return nil }
+    for line in text.split(separator: "\n") where line.hasPrefix("VmHWM:") {
+        let fields = line.split(whereSeparator: { $0 == " " || $0 == "\t" })
+        if fields.count >= 2, let value = Int(fields[1]) { return value }
+    }
+    return nil
+    #else
+    return nil
+    #endif
+}
+
+func zipNames(_ data: Data) -> [String] {
+    guard let eocd = eocdOffset(data),
+          let count = readU16(data, eocd + 10),
+          let offset = readU32(data, eocd + 16) else { return [] }
+    var cursor = Int(offset)
+    var names: [String] = []
+    for _ in 0..<Int(count) {
+        guard readU32(data, cursor) == 0x02014b50,
+              let nameLength = readU16(data, cursor + 28),
+              let extraLength = readU16(data, cursor + 30),
+              let commentLength = readU16(data, cursor + 32),
+              cursor + 46 + Int(nameLength) <= data.count else { return names }
+        let start = cursor + 46
+        let nameData = data.subdata(in: start..<(start + Int(nameLength)))
+        names.append(String(decoding: nameData, as: UTF8.self))
+        cursor = start + Int(nameLength) + Int(extraLength) + Int(commentLength)
+    }
+    return names
+}
+
+func corruptCentralCRC(_ archive: Data) -> Data {
+    guard let eocd = eocdOffset(archive),
+          let offset = readU32(archive, eocd + 16) else { return archive }
+    let index = Int(offset) + 16
+    guard index < archive.count else { return archive }
+    var copy = archive
+    copy[index] ^= 0xff
+    return copy
+}
+
 func checkEmptyAndMalformed() {
     let emptyKML = "<?xml version=\"1.0\"?><kml xmlns=\"http://www.opengis.net/kml/2.2\"><Document/></kml>"
     check(geoJSONData(from: Data(), kind: .kml) == nil, "empty KML converted")
@@ -888,13 +1494,14 @@ func storedZip(_ files: [(String, Data)]) -> Data {
     for (name, body) in files {
         let nameData = Data(name.utf8)
         let offset = UInt32(local.count)
+        let crc = crc32(body)
         local.append(le32(0x04034b50))
         local.append(le16(20))
         local.append(le16(0))
         local.append(le16(0))
         local.append(le16(0))
         local.append(le16(0))
-        local.append(le32(0))
+        local.append(le32(crc))
         local.append(le32(UInt32(body.count)))
         local.append(le32(UInt32(body.count)))
         local.append(le16(UInt16(nameData.count)))
@@ -909,7 +1516,7 @@ func storedZip(_ files: [(String, Data)]) -> Data {
         central.append(le16(0))
         central.append(le16(0))
         central.append(le16(0))
-        central.append(le32(0))
+        central.append(le32(crc))
         central.append(le32(UInt32(body.count)))
         central.append(le32(UInt32(body.count)))
         central.append(le16(UInt16(nameData.count)))
@@ -933,6 +1540,21 @@ func storedZip(_ files: [(String, Data)]) -> Data {
     archive.append(le32(centralOffset))
     archive.append(le16(0))
     return archive
+}
+
+func crc32(_ data: Data) -> UInt32 {
+    var crc: UInt32 = 0xFFFF_FFFF
+    for byte in data {
+        crc ^= UInt32(byte)
+        for _ in 0..<8 {
+            if crc & 1 == 1 {
+                crc = (crc >> 1) ^ 0xEDB8_8320
+            } else {
+                crc >>= 1
+            }
+        }
+    }
+    return crc ^ 0xFFFF_FFFF
 }
 
 func le16(_ value: UInt16) -> Data {

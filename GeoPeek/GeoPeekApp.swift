@@ -11,6 +11,7 @@ import SwiftUI
 private let viewerWindowID = "viewer"
 
 @main
+@MainActor
 struct GeoPeekApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
@@ -29,8 +30,10 @@ struct GeoPeekApp: App {
     }
 }
 
+@MainActor
 struct ViewerCommands: Commands {
     @FocusedValue(\.fileURL) private var focusedFile
+    @FocusedValue(\.windowLoad) private var windowLoad
     @Environment(\.openWindow) private var openWindow
     var body: some Commands {
         let urls = RecentFiles.shared.urls
@@ -44,10 +47,12 @@ struct ViewerCommands: Commands {
         }
         CommandGroup(after: .newItem) {
             Button("Open File…") {
-                if let focusedFile { openDocument(into: focusedFile) }
+                if let focusedFile, let windowLoad {
+                    openDocument(into: focusedFile, load: windowLoad)
+                }
             }
             .keyboardShortcut("o", modifiers: .command)
-            .disabled(focusedFile == nil)
+            .disabled(focusedFile == nil || windowLoad == nil)
             // A WindowGroup app does not get the document Open Recent menu.
             Menu("Open Recent") {
                 if urls.isEmpty {
@@ -64,24 +69,29 @@ struct ViewerCommands: Commands {
         }
         CommandGroup(replacing: .pasteboard) {
             Button("Paste GeoJSON") {
-                if let focusedFile { pasteGeoJSON(into: focusedFile) }
+                if let focusedFile, let windowLoad {
+                    pasteGeoJSON(into: focusedFile, load: windowLoad)
+                }
             }
             .keyboardShortcut("v", modifiers: .command)
-            .disabled(focusedFile == nil)
+            .disabled(focusedFile == nil || windowLoad == nil)
         }
     }
 }
 
 extension FocusedValues {
     @Entry var fileURL: Binding<URL?>?
+    @Entry var windowLoad: WindowLoad?
 }
 
+@MainActor
 func openRecent(_ url: URL, openWindow: OpenWindowAction) {
     openWindow(value: url)
 }
 
 /// Finder and `open` deliver every URL here. `openWindow` creates a window
 /// for each one, or brings forward the window that already has that URL.
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var openWindow: OpenWindowAction?
     private var queued: [URL] = []

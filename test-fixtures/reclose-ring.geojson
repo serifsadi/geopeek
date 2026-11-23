@@ -1,0 +1,21 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"name": "Reclosed"},
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[0, 95], [1, 0], [1, 1], [0, 1], [0, 95]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Short"},
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[0, 95], [1, 0], [0, 95]]]
+      }
+    }
+  ]
+}

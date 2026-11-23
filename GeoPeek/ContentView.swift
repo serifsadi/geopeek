@@ -11,9 +11,11 @@ import UniformTypeIdentifiers
 
 // MARK: - Root view
 
+@MainActor
 struct ContentView: View {
     @Binding var fileURL: URL?
     @State private var isDragOver = false
+    @State private var windowLoad = WindowLoad()
 
     var body: some View {
         ZStack {
@@ -22,21 +24,23 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 WelcomeView(isDragOver: $isDragOver, onOpen: {
-                    openDocument(into: $fileURL)
+                    openDocument(into: $fileURL, load: windowLoad)
                 }, onPaste: {
-                    pasteGeoJSON(into: $fileURL)
+                    pasteGeoJSON(into: $fileURL, load: windowLoad)
                 })
             }
         }
         .frame(minWidth: 640, minHeight: 500)
         .navigationTitle(windowTitle)
         .focusedSceneValue(\.fileURL, $fileURL)
+        .focusedSceneValue(\.windowLoad, windowLoad)
         .toolbar {
             // Native macOS back button — only visible while a file is open.
             // QL/Preview has no toolbar, so this never appears there.
             if fileURL != nil {
                 ToolbarItem(placement: .navigation) {
                     Button {
+                        windowLoad.supersede()
                         fileURL = nil
                     } label: {
                         Label("Back", systemImage: "chevron.left")
@@ -49,13 +53,23 @@ struct ContentView: View {
         .onDrop(of: [.fileURL], isTargeted: $isDragOver) { providers in
             guard let provider = providers.first else { return false }
             // NSURL (not URL) conforms to NSItemProviderReading on macOS
+            let load = windowLoad
             _ = provider.loadObject(ofClass: NSURL.self) { (nsurl, _) in
                 guard let url = nsurl as? URL, isSupportedDocument(url) else { return }
                 DispatchQueue.main.async {
-                    fileURL = url
+                    MainActor.assumeIsolated {
+                        // Dropping the file already on screen must not cancel a paste.
+                        if isDifferentFile(url, from: fileURL) {
+                            load.supersede()
+                        }
+                        fileURL = url
+                    }
                 }
             }
             return true
+        }
+        .onDisappear {
+            windowLoad.supersede()
         }
     }
 
@@ -73,7 +87,8 @@ struct ContentView: View {
 
 }
 
-func openDocument(into fileURL: Binding<URL?>) {
+@MainActor
+func openDocument(into fileURL: Binding<URL?>, load: WindowLoad) {
     let panel = NSOpenPanel()
     panel.canChooseFiles           = true
     panel.canChooseDirectories     = false
@@ -81,11 +96,27 @@ func openDocument(into fileURL: Binding<URL?>) {
     panel.allowedContentTypes      = supportedContentTypes()
     panel.prompt = "Open"
     if panel.runModal() == .OK, let url = panel.url {
+        // Opening the file already on screen must not cancel a paste.
+        if isDifferentFile(url, from: fileURL.wrappedValue) {
+            load.supersede()
+        }
         fileURL.wrappedValue = url
     }
 }
 
-func pasteGeoJSON(into fileURL: Binding<URL?>) {
+/// True when this URL is not the file already shown. Symlinks and
+/// `..` forms of the same path count as the same file.
+private func isDifferentFile(_ url: URL, from current: URL?) -> Bool {
+    guard let current else { return true }
+    return resolvedFilePath(url) != resolvedFilePath(current)
+}
+
+private func resolvedFilePath(_ url: URL) -> String {
+    url.standardizedFileURL.resolvingSymlinksInPath().path
+}
+
+@MainActor
+func pasteGeoJSON(into fileURL: Binding<URL?>, load: WindowLoad) {
     guard let string = NSPasteboard.general.string(forType: .string),
           !string.isEmpty else {
         showPasteError("The clipboard is empty or doesn't contain text.")
@@ -95,17 +126,86 @@ func pasteGeoJSON(into fileURL: Binding<URL?>) {
         showPasteError("Could not process clipboard data.")
         return
     }
-    // A unique directory keeps two pastes from sharing one window.
+    // Same ticket as other in-window loads. A later open or drop of a
+    // different file, another paste, or Back wins; this paste must not set
+    // the window afterwards. Closing the window cancels it too. A write
+    // already started may finish, and that temporary file is then deleted.
+    let ticket = load.begin()
+    load.store(Task(priority: .userInitiated) {
+        let written = await writePastedFile(data)
+        guard load.canApply(ticket: ticket, isCancelled: Task.isCancelled) else {
+            if case .file(let url)? = written {
+                try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+            }
+            return
+        }
+        switch written {
+        case .file(let url):
+            fileURL.wrappedValue = url
+        case .failed:
+            showPasteError("Could not process clipboard data.")
+        case nil:
+            break
+        }
+    })
+}
+
+/// Name and temporary file for one paste. `Pasted.geojson` when the clipboard
+/// is GeoJSON, otherwise `Pasted.json`. Both the parse and the write run off
+/// the main actor. A write already started may finish after cancellation;
+/// the directory is removed and the file is not kept.
+@concurrent
+private func writePastedFile(_ data: Data) async -> PasteWrite? {
+    if Task.isCancelled { return nil }
     let name = parseGeoJSON(data) != nil ? "Pasted.geojson" : "Pasted.json"
+    if Task.isCancelled { return nil }
+    // A unique directory keeps two pastes from sharing one window.
     let directory = URL(fileURLWithPath: NSTemporaryDirectory())
         .appendingPathComponent("GeoPeek-\(UUID().uuidString)", isDirectory: true)
     let tempURL = directory.appendingPathComponent(name)
     do {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try data.write(to: tempURL, options: .atomic)
-        fileURL.wrappedValue = tempURL
     } catch {
-        showPasteError("Could not process clipboard data.")
+        try? FileManager.default.removeItem(at: directory)
+        return .failed
+    }
+    if Task.isCancelled {
+        try? FileManager.default.removeItem(at: directory)
+        return nil
+    }
+    return .file(tempURL)
+}
+
+private enum PasteWrite: Sendable {
+    case file(URL)
+    case failed
+}
+
+/// One window's in-flight paste. Open, drop, another paste, and Back take
+/// the ticket away so a late paste cannot replace that request.
+@MainActor
+final class WindowLoad {
+    private var gate = FileLoadGate()
+    private var task: Task<Void, Never>?
+
+    @discardableResult
+    func begin() -> UInt64 {
+        task?.cancel()
+        return gate.begin()
+    }
+
+    func supersede() {
+        task?.cancel()
+        gate.invalidate()
+    }
+
+    func canApply(ticket: UInt64, isCancelled: Bool) -> Bool {
+        gate.canApply(ticket: ticket, isCancelled: isCancelled)
+    }
+
+    func store(_ task: Task<Void, Never>) {
+        self.task = task
     }
 }
 
@@ -123,6 +223,7 @@ private func supportedContentTypes() -> [UTType] {
     return types
 }
 
+@MainActor
 private func showPasteError(_ message: String) {
     let alert = NSAlert()
     alert.messageText = "Paste Failed"
@@ -134,6 +235,7 @@ private func showPasteError(_ message: String) {
 
 // MARK: - Welcome / drop zone
 
+@MainActor
 struct WelcomeView: View {
     @Binding var isDragOver: Bool
     let onOpen: () -> Void
@@ -315,6 +417,7 @@ private struct WelcomeFooter: View {
     }
 }
 
+@MainActor
 private struct RecentRow: View {
     let url: URL
     let onOpen: () -> Void
@@ -432,6 +535,7 @@ private struct RecentRow: View {
 /// Serves `maplibre-gl.js` and `maplibre-gl.css` from the app bundle via the
 /// custom `geopeek://` scheme, letting `loadHTMLString(_:baseURL:)` resolve
 /// relative resource URLs without hitting WKWebView's file:// sandbox limits.
+@MainActor
 private final class MapLibreSchemeHandler: NSObject, WKURLSchemeHandler {
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
@@ -464,6 +568,7 @@ private final class MapLibreSchemeHandler: NSObject, WKURLSchemeHandler {
 
 // MARK: - Map NSViewRepresentable
 
+@MainActor
 struct MapView: NSViewRepresentable {
     let fileURL: URL
     var onInaccessible: () -> Void
@@ -499,6 +604,10 @@ struct MapView: NSViewRepresentable {
         context.coordinator.load(into: wv, url: fileURL, onInaccessible: onInaccessible)
     }
 
+    static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
+        coordinator.cancelLoad()
+    }
+
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     // MARK: - Coordinator
@@ -507,6 +616,8 @@ struct MapView: NSViewRepresentable {
     final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
         var currentURL: URL?
         var onInaccessible: () -> Void = {}
+        private var loadGate = FileLoadGate()
+        private var loadTask: Task<Void, Never>?
         /// Base URL of the document most recently passed to `loadHTMLString`.
         /// `nil` allows only `about:blank` (the web view's initial empty page).
         private var documentBaseURL: URL?
@@ -515,50 +626,76 @@ struct MapView: NSViewRepresentable {
         // "geopeek://r/maplibre-gl.js", which our scheme handler intercepts.
         private static let baseURL = URL(string: "geopeek://r/")!
 
+        /// Back, or any other removal of this map, must not let the read finish
+        /// into Recents or clear a file opened afterwards.
+        func cancelLoad() {
+            loadTask?.cancel()
+            loadGate.invalidate()
+        }
+
         func load(into wv: WKWebView, url: URL, onInaccessible: @escaping () -> Void) {
             self.onInaccessible = onInaccessible
+            loadTask?.cancel()
+            let ticket = loadGate.begin()
             let name = url.lastPathComponent
             let candidates = RecentFiles.shared.accessCandidates(for: url)
-            Task.detached(priority: .userInitiated) {
-                var data: Data?
-                for candidate in candidates {
-                    if let read = Self.contents(of: candidate) {
-                        data = read
-                        break
-                    }
-                }
-                let loaded = data
-                await MainActor.run {
-                    guard let data = loaded else {
-                        self.onInaccessible()
-                        return
-                    }
-                    self.documentBaseURL = Coordinator.baseURL
-                    let ucc = wv.configuration.userContentController
-                    ucc.removeAllUserScripts()
-                    let preview = renderFilePreview(data: data, fileName: name)
-                    // Finder, Open, drop, and Open Recent all arrive here.
-                    // The Not Valid page is not an open, so it is left out of Recents.
-                    // Nothing to Preview is a real file, so it is noted.
-                    switch preview {
-                    case .map, .fallback, .nothingToPreview:
-                        RecentFiles.shared.note(url)
-                    case .invalid:
-                        break
-                    }
-                    switch preview {
-                    case .map(let html, let userScript):
-                        ucc.addUserScript(WKUserScript(
-                            source: userScript,
-                            injectionTime: .atDocumentStart,
-                            forMainFrameOnly: true
-                        ))
-                        wv.loadHTMLString(html, baseURL: Coordinator.baseURL)
-                    case .fallback(let html), .invalid(let html), .nothingToPreview(let html):
-                        wv.loadHTMLString(html, baseURL: Coordinator.baseURL)
-                    }
+            loadTask = Task(priority: .userInitiated) {
+                let preview = await Self.readAndRender(candidates: candidates, fileName: name)
+                // A newer file, or a cancel, owns the window. Do not apply
+                // this result and do not record a Recent.
+                guard self.loadGate.canApply(ticket: ticket, isCancelled: Task.isCancelled),
+                      self.currentURL == url else { return }
+                self.applyLoadedPreview(preview, url: url, webView: wv)
+            }
+        }
+
+        private func applyLoadedPreview(_ preview: RenderedPreview?, url: URL, webView wv: WKWebView) {
+            guard let preview else {
+                onInaccessible()
+                return
+            }
+            documentBaseURL = Coordinator.baseURL
+            let ucc = wv.configuration.userContentController
+            ucc.removeAllUserScripts()
+            // Finder, Open, drop, and Open Recent all arrive here.
+            // The Not Valid page is not an open, so it is left out of Recents.
+            // Nothing to Preview is a real file, so it is noted.
+            switch preview {
+            case .map, .fallback, .nothingToPreview:
+                RecentFiles.shared.note(url)
+            case .invalid:
+                break
+            }
+            switch preview {
+            case .map(let html, let userScript):
+                ucc.addUserScript(WKUserScript(
+                    source: userScript,
+                    injectionTime: .atDocumentStart,
+                    forMainFrameOnly: true
+                ))
+                wv.loadHTMLString(html, baseURL: Coordinator.baseURL)
+            case .fallback(let html), .invalid(let html), .nothingToPreview(let html):
+                wv.loadHTMLString(html, baseURL: Coordinator.baseURL)
+            }
+        }
+
+        /// Read and render away from the main actor. Cancellation belongs to
+        /// the load task that awaits this. The app target does not isolate
+        /// the module to the main actor, so `renderFilePreview` stays here.
+        @concurrent
+        private static func readAndRender(candidates: [URL], fileName: String) async -> RenderedPreview? {
+            for candidate in candidates {
+                if Task.isCancelled { return nil }
+                if let data = contents(of: candidate) {
+                    if Task.isCancelled { return nil }
+                    let preview = renderFilePreview(data: data, fileName: fileName)
+                    // The parse itself does not stop. Drop the page if this
+                    // load was cancelled while it ran.
+                    if Task.isCancelled { return nil }
+                    return preview
                 }
             }
+            return nil
         }
 
         private nonisolated static func contents(of url: URL) -> Data? {
