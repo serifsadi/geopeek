@@ -790,6 +790,58 @@ func checkNonFiniteCoordinates() throws {
     case .invalid, .fallback, .nothingToPreview:
         fail("an empty FeatureCollection was not opened")
     }
+    let badFeatures = Data(#"{"type":"FeatureCollection","features":"x"}"#.utf8)
+    switch renderFilePreview(data: badFeatures, fileName: "bad-features.geojson") {
+    case .invalid(let html):
+        check(html.contains("Not Valid GeoJSON"), "a non-array features value opened the map")
+    case .map, .fallback, .nothingToPreview:
+        fail("features set to a string was not Not Valid")
+    }
+    let objectFeatures = Data(#"{"type":"FeatureCollection","features":{}}"#.utf8)
+    switch renderFilePreview(data: objectFeatures, fileName: "object-features.geojson") {
+    case .invalid:
+        break
+    case .map, .fallback, .nothingToPreview:
+        fail("features set to an object was not Not Valid")
+    }
+    let nullFeatures = Data(#"{"type":"FeatureCollection","features":null}"#.utf8)
+    switch renderFilePreview(data: nullFeatures, fileName: "null-features.geojson") {
+    case .map(_, let script):
+        guard let decoded = geoJSON(fromUserScript: script) else {
+            fail("a FeatureCollection with null features was not sent to the map")
+            return
+        }
+        check(decoded == nullFeatures, "null features was rewritten")
+    case .invalid, .fallback, .nothingToPreview:
+        fail("null features made the file Not Valid")
+    }
+    let shortRing = Data(#"""
+    {"type":"Feature","properties":{"name":"Short"},"geometry":{"type":"Polygon","coordinates":[[[0,0],[1,1],[0,0]]]}}
+    """#.utf8)
+    switch renderFilePreview(data: shortRing, fileName: "short-ring.geojson") {
+    case .map(_, let script):
+        guard let decoded = geoJSON(fromUserScript: script),
+              let feature = try? JSONSerialization.jsonObject(with: decoded) as? [String: Any] else {
+            fail("a short ring was not kept as a feature")
+            return
+        }
+        check((feature["properties"] as? [String: Any])?["name"] as? String == "Short", "short ring lost its name")
+        check(feature["geometry"] is NSNull, "a ring shorter than four positions was sent to the map")
+    case .invalid, .fallback, .nothingToPreview:
+        fail("a short ring made the file Not Valid")
+    }
+    let closedRing = Data(#"{"type":"Polygon","coordinates":[[[0,0],[1,0],[0,1],[0,0]]]}"#.utf8)
+    switch renderFilePreview(data: closedRing, fileName: "closed-ring.geojson") {
+    case .map(_, let script):
+        guard let decoded = geoJSON(fromUserScript: script) else {
+            fail("a closed ring was not sent to the map")
+            return
+        }
+        check(decoded == closedRing, "a closed ring of four positions was rewritten")
+    case .invalid, .fallback, .nothingToPreview:
+        fail("a closed ring was not drawn")
+    }
+
     let limit = Data(#"{"type":"Point","coordinates":[-540,1]}"#.utf8)
     switch renderFilePreview(data: limit, fileName: "limit.geojson") {
     case .map(_, let script):
@@ -866,6 +918,7 @@ func checkNonFiniteCoordinates() throws {
     try checkNullGeometryPreservation()
     try checkRingReclose()
     try checkJSONBooleans()
+    try checkCoordinateWalks()
     try checkKMLCoordinateScan()
 
     let script = try String(contentsOfFile: "Shared/maplibre-gl.js", encoding: .utf8)
@@ -933,14 +986,19 @@ func checkFeatureBoundsGuard(_ html: String) throws {
       this.extend = function(p) { this.points.push(p); };
     }
     var maplibregl = { LngLatBounds: LngLatBounds };
-    var bounds = featureBounds({ geometry: { coordinates: [null, true, [10, 20], [99999, 5], [0, 95], [540, 1], [-540, -90], [540.1, 1]] } });
+    var bounds = featureBounds({ geometry: { type: 'MultiPoint', coordinates: [null, true, [10, 20], [99999, 5], [0, 95], [540, 1], [-540, -90], [540.1, 1]] } });
     if (!bounds || bounds.points.length !== 3) throw new Error('flat ' + (bounds && bounds.points.length));
-    var nested = featureBounds({ geometry: { coordinates: [[null, [1, 2]], [[181, 3], false]] } });
+    var nested = featureBounds({ geometry: { type: 'MultiLineString', coordinates: [[null, [1, 2]], [[181, 3], false]] } });
     if (!nested || nested.points.length !== 2) throw new Error('nested ' + (nested && nested.points.length));
-    if (featureBounds({ geometry: { coordinates: [null, false] } }) !== null) throw new Error('empty');
+    if (featureBounds({ geometry: { type: 'LineString', coordinates: [null, false] } }) !== null) throw new Error('empty');
+    var malformed = featureBounds({ geometry: { type: 'LineString', coordinates: [[1, [2, 3]], [4, 5]] } });
+    if (!malformed || malformed.points.length !== 2 || malformed.points[0][0] !== 2) throw new Error('malformed ' + (malformed && malformed.points.length));
+    if (featureBounds({ geometry: { type: 'Nope', coordinates: [4, 5] } }) !== null) throw new Error('unknown type');
     var collection = featureBounds({ geometry: { type: 'GeometryCollection', geometries: [
+      null,
       { type: 'Point', coordinates: [4, 5] },
       { type: 'LineString', coordinates: [[6, 7], [true, false]] },
+      { type: 'Nope', coordinates: [1, 1] },
       { type: 'GeometryCollection', geometries: [{ type: 'Point', coordinates: [8, 9] }] }
     ] } });
     if (!collection || collection.points.length !== 3) throw new Error('collection ' + (collection && collection.points.length));
@@ -1014,6 +1072,31 @@ func checkRingReclose() throws {
     case .invalid, .fallback, .nothingToPreview:
         fail("reclose-ring.geojson was not opened")
     }
+}
+
+func checkCoordinateWalks() throws {
+    let mixed = Data(#"""
+    {"type":"GeometryCollection","geometries":[null,{"type":"Point","coordinates":[4,5]},{"type":"Nope","coordinates":[8,9]}]}
+    """#.utf8)
+    guard let mixedMeta = parseGeoJSON(mixed), let mixedBounds = mixedMeta.bounds else {
+        fail("a GeometryCollection with a null member was not counted")
+        return
+    }
+    check(mixedMeta.vertexCount == 1, "a null GeometryCollection member hid a point \(mixedMeta.vertexCount)")
+    check(near(mixedBounds.minLng, 4) && near(mixedBounds.minLat, 5)
+          && near(mixedBounds.maxLng, 4) && near(mixedBounds.maxLat, 5),
+          "an unknown geometry type was counted")
+    let malformed = Data(#"""
+    {"type":"LineString","coordinates":[[1,[2,3]],[4,5]]}
+    """#.utf8)
+    guard let malformedMeta = parseGeoJSON(malformed), let malformedBounds = malformedMeta.bounds else {
+        fail("a position whose second value is an array was not walked")
+        return
+    }
+    check(malformedMeta.vertexCount == 2, "malformed position count \(malformedMeta.vertexCount)")
+    check(near(malformedBounds.minLng, 2) && near(malformedBounds.minLat, 3)
+          && near(malformedBounds.maxLng, 4) && near(malformedBounds.maxLat, 5),
+          "the nested position was skipped")
 }
 
 func checkJSONBooleans() throws {

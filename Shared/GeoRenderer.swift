@@ -120,7 +120,11 @@ private func geoJSONMeta(from root: [String: Any]) -> GeoJSONMeta? {
         guard let gType = geom["type"] as? String,
               _geometryTypes.contains(gType) else { return }
         if gType == "GeometryCollection" {
-            (geom["geometries"] as? [[String: Any]])?.forEach { walkGeometry($0) }
+            // One member that is not an object must not hide the members after it.
+            guard let geometries = geom["geometries"] as? [Any] else { return }
+            for item in geometries {
+                if let child = item as? [String: Any] { walkGeometry(child) }
+            }
         } else {
             geomTypes.insert(gType)
             if let coords = geom["coordinates"] { walkCoords(coords) }
@@ -477,7 +481,10 @@ private func drawableGeoJSON(_ root: [String: Any]) -> (object: [String: Any], c
     guard let type = root["type"] as? String, _validGeoJSONTypes.contains(type) else { return nil }
     switch type {
     case "FeatureCollection":
-        guard let features = root["features"] as? [Any] else { return (root, false) }
+        // A missing or null `features` array still opens. A value that is
+        // present and not an array is not a FeatureCollection the map can read.
+        if root["features"] == nil || root["features"] is NSNull { return (root, false) }
+        guard let features = root["features"] as? [Any] else { return nil }
         var kept: [[String: Any]] = []
         var changed = false
         for item in features {
@@ -646,8 +653,8 @@ private func cleanLines(_ value: Any?) -> (parts: [Any], changed: Bool)? {
 }
 
 /// Drops positions that cannot be drawn, then closes the ring if that removal
-/// opened it. A ring still shorter than four positions is dropped. A ring that
-/// did not lose a position is left unchanged.
+/// opened it. A ring shorter than four positions is dropped, including one
+/// that lost no position.
 private func cleanRing(_ value: Any?) -> (positions: [Any], changed: Bool)? {
     guard let positions = value as? [Any] else { return nil }
     var kept: [Any] = []
@@ -659,7 +666,7 @@ private func cleanRing(_ value: Any?) -> (positions: [Any], changed: Bool)? {
             dropped = true
         }
     }
-    guard dropped else { return (positions, false) }
+    guard dropped else { return positions.count >= 4 ? (positions, false) : nil }
     if let first = kept.first, let last = kept.last, !sameLonLat(first, last) {
         kept.append(first)
     }
@@ -1802,10 +1809,12 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
           var n = 0, b = new maplibregl.LngLatBounds();
           function walkCoords(c) {
             if (!Array.isArray(c) || c.length === 0) return;
-            if (typeof c[0] === 'number') {
+            // A position is two numbers. Anything else is a list of children,
+            // including a position whose second value is itself an array.
+            if (typeof c[0] === 'number' && typeof c[1] === 'number') {
               // Same limits as isDrawablePosition: latitude -90...90, longitude -540...540.
               // JSON true and false are not numbers, so they are not positions.
-              if (typeof c[1] === 'number' && isFinite(c[0]) && isFinite(c[1]) &&
+              if (isFinite(c[0]) && isFinite(c[1]) &&
                   c[1] >= -90 && c[1] <= 90 && Math.abs(c[0]) <= 540) {
                 b.extend([c[0], c[1]]); n++;
               }
@@ -1815,7 +1824,13 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
           }
           function walkGeom(g) {
             if (!g || typeof g !== 'object') return;
-            if (g.type === 'GeometryCollection' && Array.isArray(g.geometries)) {
+            var known = g.type === 'Point' || g.type === 'MultiPoint' ||
+              g.type === 'LineString' || g.type === 'MultiLineString' ||
+              g.type === 'Polygon' || g.type === 'MultiPolygon' ||
+              g.type === 'GeometryCollection';
+            if (!known) return;
+            if (g.type === 'GeometryCollection') {
+              if (!Array.isArray(g.geometries)) return;
               for (var i = 0; i < g.geometries.length; i++) walkGeom(g.geometries[i]);
               return;
             }
