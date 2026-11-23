@@ -15,6 +15,11 @@
       "type": "Feature",
       "properties": {"name": "Ok"},
       "geometry": {"type": "Point", "coordinates": [-122.4, 37.8]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Far"},
+      "geometry": {"type": "Point", "coordinates": [99999, 10]}
     }
   ]
 }

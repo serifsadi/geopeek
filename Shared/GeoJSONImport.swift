@@ -323,11 +323,17 @@ private func parseDoubles(_ text: String) -> [Double] {
     return values
 }
 
-/// Latitude has to be finite and inside -90...90. Longitude has to be finite.
-/// A longitude past -180...180 is kept so a line can cross the antimeridian.
+/// A position MapLibre can draw. Latitude is inside -90...90.
+/// Longitude may pass -180...180 so a line can cross the antimeridian,
+/// and stops at 540 so a garbage value cannot stretch the fit.
+/// The page script's `featureBounds` uses this same limit.
+func isDrawablePosition(lon: Double, lat: Double) -> Bool {
+    lon.isFinite && lat.isFinite && abs(lat) <= 90 && abs(lon) <= 540
+}
+
 /// A non-finite altitude is omitted, the same as a missing elevation.
 private func wgs84Position(lon: Double, lat: Double, altitude: Double?) -> [Double]? {
-    guard lon.isFinite, lat.isFinite, abs(lat) <= 90 else { return nil }
+    guard isDrawablePosition(lon: lon, lat: lat) else { return nil }
     if let altitude, altitude.isFinite {
         return [lon, lat, altitude]
     }

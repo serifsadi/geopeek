@@ -18,6 +18,12 @@
   <wpt lat="10" lon="181">
     <name>Wide</name>
   </wpt>
+  <wpt lat="1" lon="99999">
+    <name>Far</name>
+  </wpt>
+  <wpt lat="2" lon="540">
+    <name>Limit</name>
+  </wpt>
   <rte>
     <name>Road</name>
     <rtept lat="nan" lon="1"><ele>Infinity</ele></rtept>

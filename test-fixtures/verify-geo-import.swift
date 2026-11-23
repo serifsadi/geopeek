@@ -14,7 +14,8 @@
 // a root other.kml and a nested kml, so the reader has to choose doc.kml.
 //
 // nonfinite.gpx and nonfinite.kml carry NaN, infinity, a latitude of 95,
-// and a longitude of 181. latitude-95.geojson repeats those two positions.
+// longitude 181, longitude 540, and longitude 99999. latitude-95.geojson
+// repeats the latitude and the two longitudes.
 // with-image.kmz is doc.kml plus a PNG. zip-bomb.kmz points 32 central-directory
 // entries at one deflate stream of 2_000_000 zero bytes (about 64 MB if every
 // entry were inflated) and is a few kilobytes on disk. lying-size.kmz declares
@@ -624,8 +625,8 @@ func checkNonFiniteCoordinates() throws {
         return
     }
     let gpxNames = gpxFeatures.compactMap { ($0["properties"] as? [String: Any])?["name"] as? String }
-    check(gpxNames == ["NoEle", "Good", "Wide", "Road", "Ridge"], "nonfinite GPX names \(gpxNames)")
-    for absent in ["Bad", "High"] {
+    check(gpxNames == ["NoEle", "Good", "Wide", "Limit", "Road", "Ridge"], "nonfinite GPX names \(gpxNames)")
+    for absent in ["Bad", "High", "Far"] {
         check(!gpxNames.contains(absent), "\(absent) should have been dropped")
     }
     check(geometry(feature(gpxFeatures, "Wide")!)["coordinates"] as? [Double] == [181, 10],
@@ -697,12 +698,14 @@ func checkNonFiniteCoordinates() throws {
         return
     }
     let kmlNames = kmlFeatures.compactMap { ($0["properties"] as? [String: Any])?["name"] as? String }
-    check(kmlNames == ["Wide", "Alt", "Line", "Track"], "nonfinite KML names \(kmlNames)")
-    for absent in ["Huge", "Nan", "Inf", "High"] {
+    check(kmlNames == ["Wide", "Limit", "Alt", "Line", "Track"], "nonfinite KML names \(kmlNames)")
+    for absent in ["Huge", "Nan", "Inf", "High", "Far"] {
         check(!kmlNames.contains(absent), "\(absent) should have been dropped")
     }
     check(geometry(feature(kmlFeatures, "Wide")!)["coordinates"] as? [Double] == [181, 10],
           "KML longitude 181 was dropped")
+    check(geometry(feature(kmlFeatures, "Limit")!)["coordinates"] as? [Double] == [540, 2],
+          "KML longitude 540 was dropped")
     check(canon(geometry(feature(kmlFeatures, "Alt")!)["coordinates"]!) == canon([-122.4, 37.8]),
           "infinite altitude was kept \(canon(geometry(feature(kmlFeatures, "Alt")!)["coordinates"]!))")
     check(canon(geometry(feature(kmlFeatures, "Line")!)["coordinates"]!) == canon([[0.0, 0.0], [1.0, 1.0]]),
@@ -719,7 +722,7 @@ func checkNonFiniteCoordinates() throws {
         fail("latitude-95.geojson did not parse")
         return
     }
-    check(meta.featureCount == 3, "latitude-95 feature count \(meta.featureCount)")
+    check(meta.featureCount == 4, "latitude-95 feature count \(meta.featureCount)")
     check(meta.vertexCount == 2, "latitude-95 vertex count \(meta.vertexCount)")
     if let bounds = meta.bounds {
         check(near(bounds.minLng, -122.4) && near(bounds.maxLng, 181)
@@ -747,8 +750,87 @@ func checkNonFiniteCoordinates() throws {
           "longitude 181 bounds")
     let page = makeMapHTML(meta: wideMeta)
     check(page.contains("c[1] >= -90 && c[1] <= 90"), "featureBounds lost the latitude check")
+    check(page.contains("Math.abs(c[0]) <= 540"), "featureBounds lost the longitude limit")
+    check(page.contains("Array.isArray(c)"), "featureBounds does not guard its walk")
     check(!page.contains("c[0] >= -180") && !page.contains("c[0] <= 180"),
           "featureBounds still rejects a longitude past 180")
+    try checkFeatureBoundsGuard(page)
+
+    switch renderFilePreview(data: onlyHigh, fileName: "high.geojson") {
+    case .invalid(let html):
+        check(html.contains("Not Valid GeoJSON"), "a GeoJSON point at latitude 95 was drawn")
+    case .map, .fallback, .nothingToPreview:
+        fail("a GeoJSON point at latitude 95 was not Not Valid")
+    }
+    let past = Data(#"{"type":"Point","coordinates":[540.1,1]}"#.utf8)
+    switch renderFilePreview(data: past, fileName: "past.geojson") {
+    case .invalid:
+        break
+    case .map, .fallback, .nothingToPreview:
+        fail("longitude 540.1 was drawn")
+    }
+    let limit = Data(#"{"type":"Point","coordinates":[-540,1]}"#.utf8)
+    switch renderFilePreview(data: limit, fileName: "limit.geojson") {
+    case .map(_, let script):
+        guard let decoded = geoJSON(fromUserScript: script) else {
+            fail("longitude -540 was rewritten or dropped")
+            return
+        }
+        check(decoded == limit, "a drawable GeoJSON point was rewritten")
+    case .fallback, .invalid, .nothingToPreview:
+        fail("longitude -540 was not drawn")
+    }
+
+    switch renderFilePreview(data: geo, fileName: "latitude-95.geojson") {
+    case .map(_, let script):
+        guard let decoded = geoJSON(fromUserScript: script),
+              let drawn = featureList(in: decoded) else {
+            fail("latitude-95.geojson was not sent to the map")
+            return
+        }
+        let drawnNames = drawn.compactMap { ($0["properties"] as? [String: Any])?["name"] as? String }
+        check(drawnNames == ["Wide", "Ok"], "map features \(drawnNames)")
+        guard let drawnMeta = parseGeoJSON(decoded) else {
+            fail("sanitized GeoJSON did not parse")
+            return
+        }
+        check(drawnMeta.featureCount == 2 && drawnMeta.vertexCount == 2, "sanitized counts")
+        if let bounds = drawnMeta.bounds {
+            check(near(bounds.minLng, -122.4) && near(bounds.maxLng, 181)
+                  && near(bounds.minLat, 10) && near(bounds.maxLat, 37.8),
+                  "sanitized bounds")
+        } else {
+            fail("sanitized GeoJSON lost its bounds")
+        }
+    case .fallback, .invalid, .nothingToPreview:
+        fail("latitude-95.geojson was not drawn")
+    }
+
+    let mixed = Data(#"""
+    {"type":"FeatureCollection","features":[
+      {"type":"Feature","properties":{"name":"Path"},"geometry":{"type":"LineString","coordinates":[[0,0],[1,95],[99999,1],[540,2],[2,2]]}},
+      {"type":"Feature","properties":{"name":"Gone"},"geometry":{"type":"Point","coordinates":[0,95]}},
+      {"type":"Feature","properties":{"name":"Thin"},"geometry":{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,95],[0,0]]]}},
+      {"type":"Feature","properties":{"name":"Ring"},"geometry":{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,95],[0,1],[0,0]]]}}
+    ]}
+    """#.utf8)
+    switch renderFilePreview(data: mixed, fileName: "mixed.geojson") {
+    case .map(_, let script):
+        guard let decoded = geoJSON(fromUserScript: script),
+              let drawn = featureList(in: decoded) else {
+            fail("mixed GeoJSON was not sent to the map")
+            return
+        }
+        let drawnNames = drawn.compactMap { ($0["properties"] as? [String: Any])?["name"] as? String }
+        check(drawnNames == ["Path", "Ring"], "mixed map features \(drawnNames)")
+        check(canon(geometry(feature(drawn, "Path")!)["coordinates"]!) == canon([[0.0, 0.0], [540.0, 2.0], [2.0, 2.0]]),
+              "Path kept a bad position")
+        check(canon(geometry(feature(drawn, "Ring")!)["coordinates"]!) == canon([
+            [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [0.0, 0.0]]
+        ]), "Ring kept a latitude of 95")
+    case .fallback, .invalid, .nothingToPreview:
+        fail("mixed GeoJSON was not drawn")
+    }
 
     try checkKMLCoordinateScan()
 
@@ -794,6 +876,43 @@ func checkKMLCoordinateScan() throws {
     ]
     check(canon(geometry(features[0])["coordinates"]!) == canon(expected),
           "KML coordinates were misread \(canon(geometry(features[0])["coordinates"]!))")
+}
+
+func checkFeatureBoundsGuard(_ html: String) throws {
+    guard let start = html.range(of: "function featureBounds(f) {") else {
+        fail("featureBounds missing")
+        return
+    }
+    let rest = html[start.lowerBound...]
+    guard let end = rest.range(of: "function buildTable") else {
+        fail("featureBounds end missing")
+        return
+    }
+    let function = String(rest[..<end.lowerBound])
+    let program = """
+    \(function)
+    function LngLatBounds() {
+      this.points = [];
+      this.extend = function(p) { this.points.push(p); };
+    }
+    var maplibregl = { LngLatBounds: LngLatBounds };
+    var bounds = featureBounds({ geometry: { coordinates: [null, true, [10, 20], [99999, 5], [0, 95], [540, 1], [-540, -90], [540.1, 1]] } });
+    if (!bounds || bounds.points.length !== 3) throw new Error('flat ' + (bounds && bounds.points.length));
+    var nested = featureBounds({ geometry: { coordinates: [[null, [1, 2]], [[181, 3], false]] } });
+    if (!nested || nested.points.length !== 2) throw new Error('nested ' + (nested && nested.points.length));
+    if (featureBounds({ geometry: { coordinates: [null, false] } }) !== null) throw new Error('empty');
+    """
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("geopeek-feature-bounds.js")
+    try program.write(to: url, atomically: true, encoding: .utf8)
+    let node = Process()
+    node.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    node.arguments = ["node", url.path]
+    let err = Pipe()
+    node.standardError = err
+    try node.run()
+    node.waitUntilExit()
+    let text = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    check(node.terminationStatus == 0, "featureBounds rejected a malformed coordinate: \(text)")
 }
 
 func near(_ a: Double, _ b: Double) -> Bool {

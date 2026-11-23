@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- A coordinate that is not a real number, or a latitude outside -90 to 90, is left out of a KML, KMZ, or GPX file. A longitude past -180 to 180 is kept. An elevation that is not a real number is left out. The app and Quick Look no longer crash on these files. A GeoJSON latitude outside that range is left out of the map bounds and is not counted as a vertex.
+- A coordinate that is not a real number, or a latitude outside -90 to 90, is left out of a KML, KMZ, GPX, or GeoJSON file. A longitude past -180 to 180 is kept, up to 540. An elevation that is not a real number is left out. The app and Quick Look no longer crash on these files. GeoJSON sent to the map has those positions removed. If none remain, the file is Not Valid.
 - Opening a KMZ file unpacks its KML document and leaves the other files in the archive packed. A KML document that expands past the size the archive declares is Not Valid.
 - MapLibre GL JS is 5.24.1.
 
