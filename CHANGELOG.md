@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- The GeoPeek menu, just below About GeoPeek, and the welcome screen offer Set as Default…. macOS asks once for each of GeoJSON, KML, KMZ, and GPX, and GeoPeek becomes the default only if those prompts are approved. The action is unavailable when GeoPeek is already the default for all four. The handler rank stays Alternate.
+- The GeoPeek menu, just below About GeoPeek, and the welcome screen offer Set as Default…. macOS asks for each of GeoJSON, KML, KMZ, and GPX that GeoPeek does not already open, and GeoPeek becomes the default only if those prompts are approved. The action is unavailable when GeoPeek is already the default for all four. The handler rank stays Alternate.
 
 ## 0.4.0
 

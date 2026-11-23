@@ -39,6 +39,9 @@ final class DefaultApplication {
     }
 
     func refresh() {
+        // A refresh during the dialogs would hide the control before the
+        // sequence's own refresh, and would read Launch Services mid-prompt.
+        guard !isSetting else { return }
         let types = Self.contentTypes
         guard types.count == Self.typeIdentifiers.count else {
             isDefaultForAll = false
@@ -54,8 +57,19 @@ final class DefaultApplication {
     func setAsDefault() async {
         guard !isSetting else { return }
         let types = Self.contentTypes
-        guard !types.isEmpty else {
+        let missing = Self.typeIdentifiers.count - types.count
+        if types.isEmpty {
             present("GeoPeek could not find the file types it opens.")
+            return
+        }
+        let pending = types.filter { !Self.isThisAppDefault($0) }
+        // Every resolved type is already this app. Refresh so a change made
+        // elsewhere disables the control, and say so when a type never resolved.
+        if pending.isEmpty {
+            refresh()
+            if missing > 0 {
+                present("GeoPeek could not find every file type it opens.")
+            }
             return
         }
         isSetting = true
@@ -65,7 +79,7 @@ final class DefaultApplication {
         }
 
         var failure: String?
-        for type in types where !Self.isThisAppDefault(type) {
+        for type in pending {
             do {
                 try await NSWorkspace.shared.setDefaultApplication(
                     at: Bundle.main.bundleURL,
@@ -75,6 +89,9 @@ final class DefaultApplication {
                 if Self.isUserDenial(error) { continue }
                 if failure == nil { failure = error.localizedDescription }
             }
+        }
+        if missing > 0, failure == nil {
+            failure = "GeoPeek could not find every file type it opens."
         }
         if let failure {
             present(failure.isEmpty ? "GeoPeek could not become the default app." : failure)
@@ -86,19 +103,39 @@ final class DefaultApplication {
     }
 
     /// `urlForApplication(toOpen:)` is the default app Launch Services would use.
-    /// Path comparison stays on this bundle, so a second copy of GeoPeek does
-    /// not count.
+    /// Identity is this bundle's file, so a second copy of GeoPeek does not count.
     private static func isThisAppDefault(_ type: UTType) -> Bool {
         guard let handler = NSWorkspace.shared.urlForApplication(toOpen: type) else { return false }
-        return samePath(handler, Bundle.main.bundleURL)
+        return isThisBundle(handler)
     }
 
-    private static func samePath(_ lhs: URL, _ rhs: URL) -> Bool {
-        resolvedPath(lhs) == resolvedPath(rhs)
+    /// Path spelling, then the file itself. Launch Services may return this
+    /// same bundle through `/System/Volumes/Data` or a different case.
+    private static func isThisBundle(_ url: URL) -> Bool {
+        let bundle = Bundle.main.bundleURL
+        if normalizedPath(url) == normalizedPath(bundle) { return true }
+        return sameFile(url, bundle)
     }
 
-    private static func resolvedPath(_ url: URL) -> String {
-        url.resolvingSymlinksInPath().standardizedFileURL.path
+    private static func normalizedPath(_ url: URL) -> String {
+        var path = url.resolvingSymlinksInPath().standardizedFileURL.path
+        let dataRoot = "/System/Volumes/Data"
+        if path.hasPrefix(dataRoot + "/") {
+            path.removeFirst(dataRoot.count)
+        }
+        while path.count > 1, path.hasSuffix("/") {
+            path.removeLast()
+        }
+        return path.lowercased(with: Locale(identifier: "en_US_POSIX"))
+    }
+
+    private static func sameFile(_ lhs: URL, _ rhs: URL) -> Bool {
+        let keys: Set<URLResourceKey> = [.fileResourceIdentifierKey]
+        guard
+            let left = try? lhs.resourceValues(forKeys: keys).fileResourceIdentifier,
+            let right = try? rhs.resourceValues(forKeys: keys).fileResourceIdentifier
+        else { return false }
+        return (left as AnyObject).isEqual(right)
     }
 
     /// The system dialog reports a refusal as a cancellation. That is the user
