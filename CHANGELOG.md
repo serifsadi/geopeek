@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.1 - 2026-11-23
 
 - The GeoPeek menu, just below About GeoPeek, and the welcome screen offer Set as Default…. macOS asks for each of GeoJSON, KML, KMZ, and GPX that GeoPeek does not already open, and GeoPeek becomes the default only if those prompts are approved. The action is unavailable when GeoPeek is already the default for all four. The handler rank stays Alternate.
 - Opening another file, or leaving the file, while it is still loading keeps the window on the latest request. The earlier result is discarded and is not added to Recents. Reading the file and preparing the preview run off the main thread, so a large file does not freeze the window.
