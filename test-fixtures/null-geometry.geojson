@@ -1,0 +1,20 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"name": "Unlocated", "note": "kept"},
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Place"},
+      "geometry": {"type": "Point", "coordinates": [10, 20]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"name": "Bad"},
+      "geometry": {"type": "Point", "coordinates": [0, 95]}
+    }
+  ]
+}
