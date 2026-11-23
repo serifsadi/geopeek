@@ -65,6 +65,9 @@ struct ContentView: View {
             }
             return true
         }
+        .onDisappear {
+            windowLoad.supersede()
+        }
     }
 
     // MARK: - Helpers
@@ -107,31 +110,56 @@ func pasteGeoJSON(into fileURL: Binding<URL?>, load: WindowLoad) {
         return
     }
     // Same ticket as other in-window loads. A later open, drop, paste, or
-    // Back wins; this paste must not set the window afterwards.
+    // Back wins; this paste must not set the window afterwards. Closing the
+    // window cancels it too, so the temporary file is not written after that.
     let ticket = load.begin()
     load.store(Task(priority: .userInitiated) {
-        let name = await pastedFileName(for: data)
-        guard load.canApply(ticket: ticket, isCancelled: Task.isCancelled) else { return }
-        // A unique directory keeps two pastes from sharing one window.
-        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("GeoPeek-\(UUID().uuidString)", isDirectory: true)
-        let tempURL = directory.appendingPathComponent(name)
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try data.write(to: tempURL, options: .atomic)
-            fileURL.wrappedValue = tempURL
-        } catch {
+        let written = await writePastedFile(data)
+        guard load.canApply(ticket: ticket, isCancelled: Task.isCancelled) else {
+            if case .file(let url)? = written {
+                try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+            }
+            return
+        }
+        switch written {
+        case .file(let url):
+            fileURL.wrappedValue = url
+        case .failed:
             showPasteError("Could not process clipboard data.")
+        case nil:
+            break
         }
     })
 }
 
-/// `Pasted.geojson` when the clipboard is GeoJSON, otherwise `Pasted.json`.
-/// The whole value is parsed off the main actor. The strings stay the same.
+/// Name and temporary file for one paste. `Pasted.geojson` when the clipboard
+/// is GeoJSON, otherwise `Pasted.json`. Both the parse and the write run off
+/// the main actor. A cancelled paste writes nothing.
 @concurrent
-private func pastedFileName(for data: Data) async -> String {
-    if Task.isCancelled { return "Pasted.json" }
-    return parseGeoJSON(data) != nil ? "Pasted.geojson" : "Pasted.json"
+private func writePastedFile(_ data: Data) async -> PasteWrite? {
+    if Task.isCancelled { return nil }
+    let name = parseGeoJSON(data) != nil ? "Pasted.geojson" : "Pasted.json"
+    if Task.isCancelled { return nil }
+    // A unique directory keeps two pastes from sharing one window.
+    let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("GeoPeek-\(UUID().uuidString)", isDirectory: true)
+    let tempURL = directory.appendingPathComponent(name)
+    do {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try data.write(to: tempURL, options: .atomic)
+    } catch {
+        return .failed
+    }
+    if Task.isCancelled {
+        try? FileManager.default.removeItem(at: directory)
+        return nil
+    }
+    return .file(tempURL)
+}
+
+private enum PasteWrite: Sendable {
+    case file(URL)
+    case failed
 }
 
 /// One window's in-flight paste. Open, drop, another paste, and Back take
