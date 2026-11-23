@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">
+  <Document>
+    <Placemark><name>Huge</name><Point><coordinates>1e999,10</coordinates></Point></Placemark>
+    <Placemark><name>Nan</name><Point><coordinates>nan,5</coordinates></Point></Placemark>
+    <Placemark><name>Inf</name><Point><coordinates>inf,10</coordinates></Point></Placemark>
+    <Placemark><name>High</name><Point><coordinates>10,95</coordinates></Point></Placemark>
+    <Placemark><name>Wide</name><Point><coordinates>181,10</coordinates></Point></Placemark>
+    <Placemark><name>Far</name><Point><coordinates>99999,10</coordinates></Point></Placemark>
+    <Placemark><name>Limit</name><Point><coordinates>540,2</coordinates></Point></Placemark>
+    <Placemark><name>Alt</name><Point><coordinates>-122.4,37.8,1e999</coordinates></Point></Placemark>
+    <Placemark><name>Line</name><LineString><coordinates>0,0 1e999,1 nan,2 1,1</coordinates></LineString></Placemark>
+    <Placemark><name>Track</name>
+      <gx:Track>
+        <gx:coord>1e999 10 3</gx:coord>
+        <gx:coord>nan 2 3</gx:coord>
+        <gx:coord>-120 35 100</gx:coord>
+        <gx:coord>-120.1 35.1 nan</gx:coord>
+      </gx:Track>
+    </Placemark>
+  </Document>
+</kml>
