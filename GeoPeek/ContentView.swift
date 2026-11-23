@@ -104,10 +104,15 @@ func openDocument(into fileURL: Binding<URL?>, load: WindowLoad) {
     }
 }
 
-/// True when this URL is not the file already shown.
+/// True when this URL is not the file already shown. Symlinks and
+/// `..` forms of the same path count as the same file.
 private func isDifferentFile(_ url: URL, from current: URL?) -> Bool {
     guard let current else { return true }
-    return url != current
+    return resolvedFilePath(url) != resolvedFilePath(current)
+}
+
+private func resolvedFilePath(_ url: URL) -> String {
+    url.standardizedFileURL.resolvingSymlinksInPath().path
 }
 
 @MainActor
