@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Opening another file while an earlier one is still loading keeps the latest file. The earlier result is discarded and is not added to Recents. Reading the file and preparing the preview run off the main thread, so a large file does not freeze the window.
+- Opening another file, or leaving the file, while it is still loading keeps the window on the latest request. The earlier result is discarded and is not added to Recents. Reading the file and preparing the preview run off the main thread, so a large file does not freeze the window.
 
 ## 0.4.0
 

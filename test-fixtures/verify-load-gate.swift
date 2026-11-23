@@ -66,6 +66,20 @@ func run() {
     check(missingNoted.isEmpty, "an unreadable file was recorded: \(missingNoted)")
     check(missingCleared == ["missing"], "the current unreadable file must leave the window")
 
+    // Back removes the map while the read is still running. That load must
+    // not record a Recent or clear a file opened afterwards.
+    var left = FileLoadGate()
+    let abandoned = left.begin()
+    left.invalidate()
+    var leftNoted: [String] = []
+    var leftCleared: [String] = []
+    record("abandoned", ticket: abandoned, readable: true, gate: left,
+           noted: &leftNoted, cleared: &leftCleared)
+    record("abandoned-missing", ticket: abandoned, readable: false, gate: left,
+           noted: &leftNoted, cleared: &leftCleared)
+    check(leftNoted.isEmpty, "a load left behind was recorded: \(leftNoted)")
+    check(leftCleared.isEmpty, "a load left behind cleared the window: \(leftCleared)")
+
     var rapid = FileLoadGate()
     var tickets: [UInt64] = []
     for _ in 0..<50 {

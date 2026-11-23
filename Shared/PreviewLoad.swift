@@ -16,6 +16,12 @@ struct FileLoadGate: Sendable {
         return current
     }
 
+    /// Drops the current ticket. The in-flight load can no longer apply,
+    /// including when the view that started it has gone away.
+    mutating func invalidate() {
+        current &+= 1
+    }
+
     /// True only for the ticket `begin()` returned most recently, and only
     /// when that load has not been cancelled. A false result must not change
     /// the window or Recents.

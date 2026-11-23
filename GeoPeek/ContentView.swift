@@ -467,6 +467,10 @@ struct MapView: NSViewRepresentable {
         context.coordinator.load(into: wv, url: fileURL, onInaccessible: onInaccessible)
     }
 
+    static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
+        coordinator.cancelLoad()
+    }
+
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     // MARK: - Coordinator
@@ -484,6 +488,13 @@ struct MapView: NSViewRepresentable {
         // Base URL for the HTML: relative paths ("maplibre-gl.js") resolve to
         // "geopeek://r/maplibre-gl.js", which our scheme handler intercepts.
         private static let baseURL = URL(string: "geopeek://r/")!
+
+        /// Back, or any other removal of this map, must not let the read finish
+        /// into Recents or clear a file opened afterwards.
+        func cancelLoad() {
+            loadTask?.cancel()
+            loadGate.invalidate()
+        }
 
         func load(into wv: WKWebView, url: URL, onInaccessible: @escaping () -> Void) {
             self.onInaccessible = onInaccessible
@@ -540,7 +551,11 @@ struct MapView: NSViewRepresentable {
                 if Task.isCancelled { return nil }
                 if let data = contents(of: candidate) {
                     if Task.isCancelled { return nil }
-                    return renderFilePreview(data: data, fileName: fileName)
+                    let preview = renderFilePreview(data: data, fileName: fileName)
+                    // The parse itself does not stop. Drop the page if this
+                    // load was cancelled while it ran.
+                    if Task.isCancelled { return nil }
+                    return preview
                 }
             }
             return nil
