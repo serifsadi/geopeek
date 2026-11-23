@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import CoreFoundation
 #if canImport(WebKit)
 import WebKit
 #endif
@@ -99,10 +100,10 @@ private func geoJSONMeta(from root: [String: Any]) -> GeoJSONMeta? {
     func walkCoords(_ coords: Any) {
         guard let arr = coords as? [Any] else { return }
         if !arr.isEmpty, !(arr[0] is [Any]), arr.count >= 2,
-           let lng = (arr[0] as? NSNumber)?.doubleValue,
-           let lat = (arr[1] as? NSNumber)?.doubleValue {
+           let lng = coordinateNumber(arr[0]),
+           let lat = coordinateNumber(arr[1]) {
             // Same rule as KML and GPX import. A longitude past -180...180
-            // is kept, up to 540.
+            // is kept, up to 540. JSON true and false are not coordinates.
             if isDrawablePosition(lon: lng, lat: lat) {
                 meta.vertexCount += 1
                 if lng < minLng { minLng = lng }
@@ -433,8 +434,8 @@ enum RenderedPreview {
 
 /// Map when `data` is GeoJSON; otherwise the read-only fallback. The decision
 /// is the root `type`, never the filename. Positions that MapLibre cannot draw
-/// are removed first. A geometry or feature with nothing left is removed. When
-/// nothing drawable remains, the file uses the Not Valid page.
+/// are removed first. A feature that then has no geometry keeps its properties
+/// with `geometry` null. Filtering does not make the file Not Valid.
 func renderPreview(data: Data,
                    fileName: String,
                    maxFallbackBytes: Int = jsonFallbackMaxBytes) -> RenderedPreview {
@@ -468,13 +469,15 @@ func renderPreview(data: Data,
         fileName: fileName, data: data, maxBytes: maxFallbackBytes, parsed: nil))
 }
 
-/// Drops positions `isDrawablePosition` rejects. A clean document is returned
-/// unchanged so its bytes can be shown as they were opened.
+/// Drops positions `isDrawablePosition` rejects. A feature with `geometry` null
+/// stays. A geometry that loses every drawable position becomes null, and the
+/// feature's properties stay. A clean document is returned unchanged so its
+/// bytes can be shown as they were opened.
 private func drawableGeoJSON(_ root: [String: Any]) -> (object: [String: Any], changed: Bool)? {
     guard let type = root["type"] as? String, _validGeoJSONTypes.contains(type) else { return nil }
     switch type {
     case "FeatureCollection":
-        guard let features = root["features"] as? [Any] else { return nil }
+        guard let features = root["features"] as? [Any] else { return (root, false) }
         var kept: [[String: Any]] = []
         var changed = false
         for item in features {
@@ -482,14 +485,10 @@ private func drawableGeoJSON(_ root: [String: Any]) -> (object: [String: Any], c
                 changed = true
                 continue
             }
-            if let cleaned = cleanFeature(feature) {
-                kept.append(cleaned.object)
-                if cleaned.changed { changed = true }
-            } else {
-                changed = true
-            }
+            let cleaned = cleanFeature(feature)
+            kept.append(cleaned.object)
+            if cleaned.changed { changed = true }
         }
-        guard !kept.isEmpty else { return nil }
         guard changed else { return (root, false) }
         var copy = root
         copy["features"] = kept
@@ -498,13 +497,29 @@ private func drawableGeoJSON(_ root: [String: Any]) -> (object: [String: Any], c
     case "Feature":
         return cleanFeature(root)
     default:
-        return cleanGeometry(root)
+        if let cleaned = cleanGeometry(root) { return cleaned }
+        return (["type": "FeatureCollection", "features": []], true)
     }
 }
 
-private func cleanFeature(_ feature: [String: Any]) -> (object: [String: Any], changed: Bool)? {
-    guard let geometry = feature["geometry"] as? [String: Any],
-          let cleaned = cleanGeometry(geometry) else { return nil }
+/// `geometry` null is valid and stays. Filtering that removes every position
+/// sets `geometry` to null and keeps the properties.
+private func cleanFeature(_ feature: [String: Any]) -> (object: [String: Any], changed: Bool) {
+    if feature["geometry"] == nil || feature["geometry"] is NSNull {
+        return (feature, false)
+    }
+    guard let geometry = feature["geometry"] as? [String: Any] else {
+        var copy = feature
+        copy["geometry"] = NSNull()
+        copy.removeValue(forKey: "bbox")
+        return (copy, true)
+    }
+    guard let cleaned = cleanGeometry(geometry) else {
+        var copy = feature
+        copy["geometry"] = NSNull()
+        copy.removeValue(forKey: "bbox")
+        return (copy, true)
+    }
     guard cleaned.changed else { return (feature, false) }
     var copy = feature
     copy["geometry"] = cleaned.object
@@ -579,12 +594,22 @@ private func replacingParts(
     return (copy, true)
 }
 
+/// A JSON number used as a longitude or latitude. `true` and `false` are
+/// NSNumber values whose `doubleValue` is 1 and 0; they are not coordinates.
+private func coordinateNumber(_ value: Any) -> Double? {
+    guard let number = value as? NSNumber,
+          CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+    let double = number.doubleValue
+    guard double.isFinite else { return nil }
+    return double
+}
+
 /// A position array whose longitude and latitude pass `isDrawablePosition`.
 /// The original array is kept, including a finite altitude.
 private func keptPosition(_ value: Any?) -> Any? {
     guard let arr = value as? [Any], arr.count >= 2, !(arr[0] is [Any]),
-          let lon = (arr[0] as? NSNumber)?.doubleValue,
-          let lat = (arr[1] as? NSNumber)?.doubleValue,
+          let lon = coordinateNumber(arr[0]),
+          let lat = coordinateNumber(arr[1]),
           isDrawablePosition(lon: lon, lat: lat) else { return nil }
     return value
 }
@@ -620,8 +645,33 @@ private func cleanLines(_ value: Any?) -> (parts: [Any], changed: Bool)? {
     return (kept, changed)
 }
 
+/// Drops positions that cannot be drawn, then closes the ring if that removal
+/// opened it. A ring still shorter than four positions is dropped. A ring that
+/// did not lose a position is left unchanged.
 private func cleanRing(_ value: Any?) -> (positions: [Any], changed: Bool)? {
-    cleanPositions(value, minimum: 4)
+    guard let positions = value as? [Any] else { return nil }
+    var kept: [Any] = []
+    var dropped = false
+    for item in positions {
+        if let position = keptPosition(item) {
+            kept.append(position)
+        } else {
+            dropped = true
+        }
+    }
+    guard dropped else { return (positions, false) }
+    if let first = kept.first, let last = kept.last, !sameLonLat(first, last) {
+        kept.append(first)
+    }
+    guard kept.count >= 4 else { return nil }
+    return (kept, true)
+}
+
+private func sameLonLat(_ a: Any, _ b: Any) -> Bool {
+    guard let aa = a as? [Any], let bb = b as? [Any], aa.count >= 2, bb.count >= 2,
+          let aLon = coordinateNumber(aa[0]), let aLat = coordinateNumber(aa[1]),
+          let bLon = coordinateNumber(bb[0]), let bLat = coordinateNumber(bb[1]) else { return false }
+    return aLon == bLon && aLat == bLat
 }
 
 private func cleanPolygon(_ value: Any?) -> (parts: [Any], changed: Bool)? {
@@ -1748,20 +1798,30 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
         }
 
         function featureBounds(f) {
-          if (!f.geometry || !f.geometry.coordinates) return null;
+          if (!f || !f.geometry) return null;
           var n = 0, b = new maplibregl.LngLatBounds();
-          (function walk(c) {
+          function walkCoords(c) {
             if (!Array.isArray(c) || c.length === 0) return;
             if (typeof c[0] === 'number') {
               // Same limits as isDrawablePosition: latitude -90...90, longitude -540...540.
+              // JSON true and false are not numbers, so they are not positions.
               if (typeof c[1] === 'number' && isFinite(c[0]) && isFinite(c[1]) &&
                   c[1] >= -90 && c[1] <= 90 && Math.abs(c[0]) <= 540) {
                 b.extend([c[0], c[1]]); n++;
               }
               return;
             }
-            for (var i = 0; i < c.length; i++) walk(c[i]);
-          })(f.geometry.coordinates);
+            for (var i = 0; i < c.length; i++) walkCoords(c[i]);
+          }
+          function walkGeom(g) {
+            if (!g || typeof g !== 'object') return;
+            if (g.type === 'GeometryCollection' && Array.isArray(g.geometries)) {
+              for (var i = 0; i < g.geometries.length; i++) walkGeom(g.geometries[i]);
+              return;
+            }
+            if (g.coordinates) walkCoords(g.coordinates);
+          }
+          walkGeom(f.geometry);
           return n ? b : null;
         }
 
