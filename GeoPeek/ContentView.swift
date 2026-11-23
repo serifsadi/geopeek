@@ -272,33 +272,22 @@ struct WelcomeView: View {
     }
 }
 
-/// Hint plus the Set as Default… link.
+/// Hint, then the Set as Default… link on the next line.
 ///
-/// The hint keeps the 340pt wrap from the welcome footer. The link sits on
-/// that row only when the column is wide enough for the wrapped hint and the
-/// link together. A narrower column (the minimum window with the Recents
-/// sidebar) puts the link under the hint, and the hint keeps the full column
-/// width so the sentence still wraps instead of being squeezed.
+/// The hint keeps the 340pt wrap. The link stays in this column, under the
+/// hint, so it does not sit in the Recents sidebar or beside Clear Recents.
+/// It is hidden once this app is already the default for every declared type.
 private struct WelcomeFooter: View {
     private static let hintWidth: CGFloat = 340
 
     var body: some View {
-        if DefaultApplication.shared.isDefaultForAll {
+        VStack(alignment: .center, spacing: 6) {
             welcomeHint
-        } else {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: 8) {
-                    welcomeHint
-                        .frame(width: Self.hintWidth)
-                    setDefaultButton
-                }
-                .fixedSize(horizontal: true, vertical: false)
-                VStack(spacing: 6) {
-                    welcomeHint
-                    setDefaultButton
-                }
+            if !DefaultApplication.shared.isDefaultForAll {
+                setDefaultButton
             }
         }
+        .frame(maxWidth: Self.hintWidth)
     }
 
     private var welcomeHint: some View {
