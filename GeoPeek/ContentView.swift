@@ -30,7 +30,7 @@ struct ContentView: View {
                 })
             }
         }
-        .frame(minWidth: 640, minHeight: 480)
+        .frame(minWidth: 640, minHeight: 500)
         .navigationTitle(windowTitle)
         .focusedSceneValue(\.fileURL, $fileURL)
         .focusedSceneValue(\.windowLoad, windowLoad)
@@ -253,7 +253,13 @@ struct WelcomeView: View {
             welcomeColumn
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .onAppear { RecentFiles.shared.refresh() }
+        // Fill the window. The stack's ideal height is taller than the old
+        // minimum, and AppKit clips that overflow at the top and bottom.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            RecentFiles.shared.refresh()
+            DefaultApplication.shared.refresh()
+        }
     }
 
     private var welcomeColumn: some View {
@@ -299,13 +305,7 @@ struct WelcomeView: View {
 
             Spacer().frame(height: 16)
 
-            Text("You can also press **Space** on a GeoJSON, KML, KMZ, or GPX file in Finder to preview it.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .frame(maxWidth: 340)
-                .fixedSize(horizontal: false, vertical: true)
+            WelcomeFooter()
 
             Spacer()
         }
@@ -374,6 +374,46 @@ struct WelcomeView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.15), value: isDragOver)
+    }
+}
+
+/// Hint, then the Set as Default… link on the next line.
+///
+/// The hint keeps the 340pt wrap. The link stays in this column, under the
+/// hint, so it does not sit in the Recents sidebar or beside Clear Recents.
+/// It is hidden once this app is already the default for every declared type.
+private struct WelcomeFooter: View {
+    private static let hintWidth: CGFloat = 340
+
+    var body: some View {
+        VStack(alignment: .center, spacing: 6) {
+            welcomeHint
+            if !DefaultApplication.shared.isDefaultForAll {
+                setDefaultButton
+            }
+        }
+        .frame(maxWidth: Self.hintWidth)
+    }
+
+    private var welcomeHint: some View {
+        Text("You can also press **Space** on a GeoJSON, KML, KMZ, or GPX file in Finder to preview it.")
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+            .frame(maxWidth: Self.hintWidth)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var setDefaultButton: some View {
+        Button("Set as Default…") {
+            Task { await DefaultApplication.shared.setAsDefault() }
+        }
+        .buttonStyle(.link)
+        .font(.caption)
+        .controlSize(.small)
+        .fixedSize()
+        .disabled(DefaultApplication.shared.isSetting)
     }
 }
 

@@ -37,6 +37,14 @@ struct ViewerCommands: Commands {
     @Environment(\.openWindow) private var openWindow
     var body: some Commands {
         let urls = RecentFiles.shared.urls
+        let setDefaultDisabled = DefaultApplication.shared.isDefaultForAll
+            || DefaultApplication.shared.isSetting
+        CommandGroup(after: .appInfo) {
+            Button("Set as Default…") {
+                Task { await DefaultApplication.shared.setAsDefault() }
+            }
+            .disabled(setDefaultDisabled)
+        }
         CommandGroup(after: .newItem) {
             Button("Open File…") {
                 if let focusedFile, let windowLoad {
@@ -113,6 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         RecentFiles.shared.refresh()
+        DefaultApplication.shared.refresh()
     }
 
     /// Suppressed launch behavior does not open a window for a Dock click.
