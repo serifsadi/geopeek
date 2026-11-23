@@ -28,7 +28,7 @@ struct ContentView: View {
                 })
             }
         }
-        .frame(minWidth: 640, minHeight: 480)
+        .frame(minWidth: 640, minHeight: 500)
         .navigationTitle(windowTitle)
         .focusedSceneValue(\.fileURL, $fileURL)
         .toolbar {
@@ -151,6 +151,9 @@ struct WelcomeView: View {
             welcomeColumn
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        // Fill the window. The stack's ideal height is taller than the old
+        // minimum, and AppKit clips that overflow at the top and bottom.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             RecentFiles.shared.refresh()
             DefaultApplication.shared.refresh()
