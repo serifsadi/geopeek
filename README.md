@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  <a href="https://geopeek.app">https://geopeek.app</a>
+</p>
+
+<p align="center">
   <a href=".github/images/quick_look_view.png">
     <img src=".github/images/quick_look_view.png" width="720" alt="GeoPeek Quick Look preview of a GeoJSON file in Finder">
   </a>
