@@ -4,9 +4,9 @@
 #
 # This is a second archive, not a second export of the Developer ID archive.
 # release.sh signs with Developer ID. App Store Connect needs Apple Distribution
-# on the app and Mac Installer Distribution on the package. The Quick Look
-# targets pin an ad-hoc identity, and one xcodebuild command can override that
-# pin with only one identity.
+# on the app and Mac Installer Distribution on the package. The distribution
+# certificate for this team is cloud-managed, so the archive signs with
+# automatic Apple Development and export applies the store certificates.
 #
 # Required environment:
 #   DEVELOPMENT_TEAM   10-character Apple Developer Team ID
@@ -61,13 +61,15 @@ require_api_key() {
 # Archive and export pass the API key through when it is set. Bash 3.2 on
 # macOS treats an empty array as unbound under set -u, so the two forms are
 # written out instead of sharing an argument list.
-# Manual signing plus an explicit identity, matching release.sh. Automatic
-# style rejects a command-line CODE_SIGN_IDENTITY, and the extension targets
-# pin an ad-hoc identity that this override has to replace. The package is
-# still signed at export, where ExportOptions-MAS.plist uses automatic signing.
+# Automatic signing with Apple Development. Manual style plus
+# "Apple Distribution" looks for a local "Mac App Distribution" certificate
+# and private key, and this team does not have one in the keychain. Automatic
+# style accepts "Apple Development" on the command line. -allowProvisioningUpdates
+# lets Xcode download profiles. ExportOptions-MAS.plist then re-signs with the
+# cloud-managed Apple Distribution certificate.
 archive_app() {
   local archive="$1"
-  echo "Archiving (clean Release, Apple Distribution)..."
+  echo "Archiving (clean Release, Apple Development)..."
   if [[ -n "${ASC_KEY_PATH:-}" ]]; then
     xcodebuild clean archive \
       -project "$PROJECT" \
@@ -81,8 +83,8 @@ archive_app() {
       -authenticationKeyID "$ASC_KEY_ID" \
       -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
       DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
-      CODE_SIGN_STYLE=Manual \
-      CODE_SIGN_IDENTITY="Apple Distribution" \
+      CODE_SIGN_STYLE=Automatic \
+      CODE_SIGN_IDENTITY="Apple Development" \
       ENABLE_HARDENED_RUNTIME=YES
   else
     xcodebuild clean archive \
@@ -94,8 +96,8 @@ archive_app() {
       -derivedDataPath "$WORK/DerivedData" \
       -allowProvisioningUpdates \
       DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
-      CODE_SIGN_STYLE=Manual \
-      CODE_SIGN_IDENTITY="Apple Distribution" \
+      CODE_SIGN_STYLE=Automatic \
+      CODE_SIGN_IDENTITY="Apple Development" \
       ENABLE_HARDENED_RUNTIME=YES
   fi
 }
@@ -136,8 +138,12 @@ assert_store_metadata() {
   [[ -n "$copyright" ]] || die "NSHumanReadableCopyright is empty"
   [[ -f "$app/Contents/Resources/Credits.html" ]] \
     || die "GeoPeek.app is missing Contents/Resources/Credits.html"
-  grep -q "BEGIN MAPLIBRE-GL-JS-5.24.1 LICENSE" "$app/Contents/Resources/Credits.html" \
-    || die "Credits.html in the app is missing the MapLibre license"
+  grep -q "geopeek://acknowledgements" "$app/Contents/Resources/Credits.html" \
+    || die "Credits.html is missing the Acknowledgements link"
+  [[ -f "$app/Contents/Resources/ThirdPartyNotices.txt" ]] \
+    || die "GeoPeek.app is missing Contents/Resources/ThirdPartyNotices.txt"
+  grep -q "BEGIN MAPLIBRE-GL-JS-5.24.1 LICENSE" "$app/Contents/Resources/ThirdPartyNotices.txt" \
+    || die "ThirdPartyNotices.txt in the app is missing the MapLibre license"
   privacy="$app/Contents/Resources/PrivacyInfo.xcprivacy"
   if [[ ! -f "$privacy" ]]; then
     privacy="$app/Contents/PrivacyInfo.xcprivacy"
@@ -147,6 +153,35 @@ assert_store_metadata() {
     || die "privacy manifest does not declare UserDefaults"
   grep -q "CA92.1" "$privacy" \
     || die "privacy manifest is missing the UserDefaults reason CA92.1"
+}
+
+# Mac App Store export must embed a profile in every appex. Xcode skips that
+# when the extension was archived ad-hoc, and App Store Connect then rejects
+# the package. The profile's application-identifier is TEAMID.bundle-id.
+assert_appex_profile() {
+  local appex="$1"
+  local bundle_id="$2"
+  local name profile decoded app_id
+  name=$(basename "$appex")
+  profile="$appex/Contents/embedded.provisionprofile"
+  [[ -f "$profile" ]] || die "$name is missing Contents/embedded.provisionprofile"
+  decoded=$(mktemp "${TMPDIR:-/tmp}/geopeek-profile.XXXXXX")
+  if ! security cms -D -i "$profile" > "$decoded"; then
+    rm -f "$decoded"
+    die "could not decode the provisioning profile in $name"
+  fi
+  app_id=$("$PLISTBUDDY" -c "Print :Entitlements:com.apple.application-identifier" "$decoded" 2>/dev/null || true)
+  rm -f "$decoded"
+  [[ "$app_id" == "$DEVELOPMENT_TEAM.$bundle_id" ]] \
+    || die "$name profile application-identifier is '$app_id', expected $DEVELOPMENT_TEAM.$bundle_id"
+}
+
+assert_appex_profiles() {
+  local app="$1"
+  assert_appex_profile "$app/Contents/PlugIns/GeoPeekExtension.appex" \
+    "dev.serifsadi.GeoPeek.GeoPeekExtension"
+  assert_appex_profile "$app/Contents/PlugIns/GeoPeekThumbnailExtension.appex" \
+    "dev.serifsadi.GeoPeek.GeoPeekThumbnailExtension"
 }
 
 assert_distribution_signature() {
@@ -233,6 +268,7 @@ main() {
   require_cmd xcodebuild
   require_cmd xcrun
   require_cmd codesign
+  require_cmd security
   require_cmd pkgutil
   require_cmd find
 
@@ -269,6 +305,7 @@ main() {
   assert_product "$app"
   assert_distribution_signature "$app"
   assert_store_metadata "$app"
+  assert_appex_profiles "$app"
 
   rm -f "$pkg_final"
   mv "$pkg" "$pkg_final"

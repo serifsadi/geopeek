@@ -141,7 +141,7 @@ The app and the Quick Look extension are sandboxed, with read-only access to use
 
 `GeoPeek/PrivacyInfo.xcprivacy`, `GeoPeekExtension/PrivacyInfo.xcprivacy`, and `GeoPeekThumbnailExtension/PrivacyInfo.xcprivacy` set `NSPrivacyTracking` to false. The tracking-domain and collected-data arrays are empty. The app declares `NSPrivacyAccessedAPICategoryUserDefaults` with reason `CA92.1` because it stores recent-file dates in its own defaults. The extension accessed-API arrays stay empty. There is no analytics.
 
-Attribution is visible when a map loads, then collapses to the info button after the first interaction or about 5 seconds. Attribution links and the MapLibre logo open in the browser. The Help menu opens the privacy policy (https://geopeek.app/privacy/) and support (https://geopeek.app/support/).
+Attribution is visible when a map loads, then collapses to the info button after the first interaction or about 5 seconds. Attribution links and the MapLibre logo open in the browser. The Help menu opens Acknowledgements, the privacy policy (https://geopeek.app/privacy/), and support (https://geopeek.app/support/).
 
 ## Releasing
 
@@ -154,7 +154,7 @@ Maintainers: see [RELEASING.md](RELEASING.md) for the Developer ID disk image an
 - [OpenMapTiles](https://openmaptiles.org/) schema
 - [OpenFreeMap](https://openfreemap.org/)
 
-The notices shipped inside the app are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). About GeoPeek shows the same text.
+The notices shipped inside the app are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). About GeoPeek shows a short credit and a link to that text. Help > Acknowledgements opens the same bundled file.
 
 ## License
 

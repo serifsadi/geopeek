@@ -39,7 +39,7 @@ People upgrading from 0.1.x or 0.2.0 get one macOS prompt that GeoPeekExtension 
 
 The login keychain needs to be unlocked (a normal Terminal.app session is).
 
-Use the script for the notarized build. The Quick Look targets stay ad-hoc signed (`CODE_SIGN_IDENTITY = "-"`) so a Debug build from Xcode does not need the Developer ID certificate. The script overrides that identity when it archives.
+Use the script for the notarized build. The Quick Look targets are ad-hoc signed in Debug (`CODE_SIGN_IDENTITY = "-"`) so a Debug build from Xcode does not need a certificate. Their Release configuration is automatic, like the app. `release.sh` overrides that with manual signing and `CODE_SIGN_IDENTITY="Developer ID Application"` when it archives.
 
 ## Each release
 
@@ -65,25 +65,21 @@ The Developer ID disk image and the Homebrew cask stay on `scripts/release.sh`. 
 
 `exportArchive` can re-sign an archive, so one archive can feed two exports in the general case. This repository does not do that.
 
-`release.sh` archives with manual signing and `CODE_SIGN_IDENTITY="Developer ID Application"`. That signature is what the disk image and notarization use. The Quick Look targets set `CODE_SIGN_IDENTITY[sdk=macosx*]` to ad-hoc (`"-"`) so a Debug build from Xcode does not need a certificate, and a plain `CODE_SIGN_IDENTITY` on the `xcodebuild` command line is what overrides it. The Developer ID archive uses that override.
+`release.sh` archives with manual signing and `CODE_SIGN_IDENTITY="Developer ID Application"`. That signature is what the disk image and notarization use. The Quick Look targets set `CODE_SIGN_IDENTITY[sdk=macosx*]` to ad-hoc (`"-"`) in Debug, so a Debug build from Xcode does not need a certificate. Release does not set that pin. A plain `CODE_SIGN_IDENTITY` on the `xcodebuild` command line is what `release.sh` uses for Developer ID, and it also sets `CODE_SIGN_STYLE=Manual`, which overrides the automatic Release setting.
 
 App Store Connect needs a different pair of certificates. The app is signed with Apple Distribution (older name: 3rd Party Mac Developer Application). The installer package is signed with Mac Installer Distribution (older name: 3rd Party Mac Developer Installer). The profiles are Mac App Store profiles, not Developer ID profiles. One archive command cannot pass both the Developer ID identity and the Apple Distribution identity. Pointing the App Store exporter at the Developer ID archive would also tie the two release paths together. Changing `release.sh` so both exports shared one archive would change the disk image path.
 
-`release-mas.sh` therefore archives again, from the same scheme and Release configuration. The archive uses manual signing and `CODE_SIGN_IDENTITY="Apple Distribution"`, the same kind of override `release.sh` uses for Developer ID. Pairing that identity with automatic style makes Xcode reject the archive. Export then uses `scripts/ExportOptions-MAS.plist` (`method` `app-store-connect`, `signingStyle` `automatic`). That export signs the package, and it is where Xcode can create the Mac Installer Distribution certificate. The certificate does not have to exist before the first export. The plist does not name a signing certificate. It sets `manageAppVersionAndBuildNumber` to false so export keeps the project version.
+`release-mas.sh` therefore archives again, from the same scheme and Release configuration. The archive uses automatic signing and `CODE_SIGN_IDENTITY="Apple Development"`, and it passes `-allowProvisioningUpdates`. This team's Apple Distribution certificate is cloud-managed. It is not in the login keychain, so manual signing with `CODE_SIGN_IDENTITY="Apple Distribution"` fails looking for a local "Mac App Distribution" certificate and private key. Automatic signing accepts `"Apple Development"` on the command line. Export then uses `scripts/ExportOptions-MAS.plist` (`method` `app-store-connect`, `signingStyle` `automatic`, also with `-allowProvisioningUpdates`). That export re-signs the app and both extensions with the cloud-managed Apple Distribution certificate, and it signs the package with Mac Installer Distribution. The plist does not name a signing certificate. It sets `manageAppVersionAndBuildNumber` to false so export keeps the project version.
+
+The extension Release configuration is automatic so that export embeds a provisioning profile in each appex. Debug stays ad-hoc. An ad-hoc or manual extension makes export log "Skipping profile for item" and leave the appex without `embedded.provisionprofile` or an application-identifier. App Store Connect rejects that. With Release automatic, each appex gets the Mac App Store profile for its own App ID (`dev.serifsadi.GeoPeek.GeoPeekExtension` and `dev.serifsadi.GeoPeek.GeoPeekThumbnailExtension`). `release.sh` still forces manual Developer ID signing on the archive command, so this Release change does not switch the disk image to App Store signing. `scripts/release.sh` and `scripts/ExportOptions.plist` are unchanged.
 
 ### Before the first upload
 
 1. The App IDs `dev.serifsadi.GeoPeek`, `dev.serifsadi.GeoPeek.GeoPeekExtension`, and `dev.serifsadi.GeoPeek.GeoPeekThumbnailExtension` are registered on team `7W797GT86L`. The App Store Connect record for GeoPeek exists.
 
-2. In Xcode, open Settings, Accounts, and sign in with an Apple ID that can create profiles for that team. Automatic signing creates the Mac App Store profiles during archive and export (`-allowProvisioningUpdates`).
+2. In Xcode, open Settings, Accounts, and sign in with an Apple ID that can create profiles for that team. Archive and export both pass `-allowProvisioningUpdates`, so Xcode can download the Apple Development profiles used at archive time and the Mac App Store profiles used at export. An App Store Connect API key (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_PATH`) does the same thing without a signed-in Apple ID.
 
-3. Archive needs an Apple Distribution certificate. Confirm it:
-
-   ```bash
-   security find-identity -v -p codesigning
-   ```
-
-   If it is missing, create it in Xcode: Settings, Accounts, Manage Certificates, add Apple Distribution.
+3. A local Apple Distribution certificate is not required. `security find-identity -v -p codesigning` should show Apple Development and Developer ID Application. The cloud-managed Apple Distribution certificate is applied when the archive is exported.
 
 4. A Mac Installer Distribution certificate does not have to exist yet. The first export creates it when Xcode signs the package. You may be asked to approve that in the Apple ID account.
 
@@ -102,7 +98,7 @@ export DEVELOPMENT_TEAM="7W797GT86L"
 ./scripts/release-mas.sh
 ```
 
-This writes `GeoPeek-<version>.pkg` in the repository root. `<version>` is `MARKETING_VERSION`. The script stops if the project versions disagree, or if the package signature, the app signature, the hardened runtime, the entitlements, the version, or the bundle layout is wrong. It also checks that `Credits.html` is in the app and that the category, copyright, and encryption flag are in the built Info.plist.
+This writes `GeoPeek-<version>.pkg` in the repository root. `<version>` is `MARKETING_VERSION`. The script stops if the project versions disagree, or if the package signature, the app signature, the hardened runtime, the entitlements, the version, or the bundle layout is wrong. It also checks that `Credits.html` and `ThirdPartyNotices.txt` are in the app, that the category, copyright, and encryption flag are in the built Info.plist, and that each appex has `Contents/embedded.provisionprofile` for its own bundle id.
 
 To upload that same archive to App Store Connect:
 

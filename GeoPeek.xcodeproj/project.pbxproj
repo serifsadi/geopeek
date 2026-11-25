@@ -605,9 +605,8 @@
 		B61370992F5370DB00DCA15B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_ENTITLEMENTS = GeoPeekExtension/GeoPeekExtension.entitlements;
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 4;
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = 7W797GT86L;
 				ENABLE_APP_SANDBOX = YES;
@@ -689,8 +688,7 @@
 		CC00000ECC5399AA00DCA15B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 4;
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = 7W797GT86L;
 				CODE_SIGN_ENTITLEMENTS = GeoPeekThumbnailExtension/GeoPeekThumbnailExtension.entitlements;

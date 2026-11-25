@@ -76,14 +76,21 @@ func roundTripJSONString(_ value: String) throws -> String {
     return literal
 }
 
-/// The MapLibre license is copied into the repo notices and the About panel.
+/// The MapLibre license is copied into the repo notices and the file the app bundles.
 /// Both copies have to be the same text, including the Mapbox section.
+/// About credits stay a short line plus a link to that file.
 func checkShippedNotices() throws {
     let notices = try String(contentsOfFile: "THIRD_PARTY_NOTICES.md", encoding: .utf8)
+    let bundled = try String(contentsOfFile: "GeoPeek/ThirdPartyNotices.txt", encoding: .utf8)
+    check(notices == bundled, "GeoPeek/ThirdPartyNotices.txt differs from THIRD_PARTY_NOTICES.md")
     let credits = try String(contentsOfFile: "GeoPeek/Credits.html", encoding: .utf8)
+    check(credits.contains("Map data © OpenStreetMap contributors. Uses MapLibre GL JS, OpenMapTiles and OpenFreeMap."),
+          "About credits are missing the short attribution line")
+    check(credits.contains("href=\"geopeek://acknowledgements\""), "About credits are missing the Acknowledgements link")
+    check(credits.contains("-apple-system"), "About credits are missing the system font")
+    check(credits.contains("font-size: 11px"), "About credits are missing the 11px size")
+    check(!credits.contains("BEGIN MAPLIBRE-GL-JS-5.24.1 LICENSE"), "About credits still include the full license")
     let fromNotices = licenseSlice(notices, "THIRD_PARTY_NOTICES.md")
-    let fromCredits = licenseSlice(credits, "Credits.html")
-    check(fromNotices == fromCredits, "MapLibre license in the notices and the About credits differ")
     check(fromNotices.contains("Copyright (c) 2023, MapLibre contributors"), "MapLibre copyright notice missing")
     check(fromNotices.contains("Redistributions in binary form must reproduce the above copyright notice"),
           "MapLibre binary-redistribution condition missing")
@@ -96,12 +103,10 @@ func checkShippedNotices() throws {
     let redistributions = fromNotices.components(separatedBy: "Redistribution and use in source and binary forms").count - 1
     check(redistributions == 3, "expected 3 BSD redistribution blocks, found \(redistributions)")
     check(fromNotices.count > 5000, "MapLibre license text is too short to be the full file")
-    for (text, label) in [(notices, "THIRD_PARTY_NOTICES.md"), (credits, "Credits.html")] {
-        check(text.contains("OpenStreetMap contributors"), "\(label) is missing the OpenStreetMap attribution")
-        check(text.contains("https://opendatacommons.org/licenses/odbl/"), "\(label) is missing the ODbL link")
-        check(text.contains("OpenMapTiles"), "\(label) is missing the OpenMapTiles attribution")
-        check(text.contains("https://openfreemap.org/"), "\(label) is missing the OpenFreeMap attribution")
-    }
+    check(notices.contains("OpenStreetMap contributors"), "THIRD_PARTY_NOTICES.md is missing the OpenStreetMap attribution")
+    check(notices.contains("https://opendatacommons.org/licenses/odbl/"), "THIRD_PARTY_NOTICES.md is missing the ODbL link")
+    check(notices.contains("OpenMapTiles"), "THIRD_PARTY_NOTICES.md is missing the OpenMapTiles attribution")
+    check(notices.contains("https://openfreemap.org/"), "THIRD_PARTY_NOTICES.md is missing the OpenFreeMap attribution")
 }
 
 func licenseSlice(_ text: String, _ label: String) -> String {

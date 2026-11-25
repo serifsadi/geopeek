@@ -66,6 +66,9 @@
     "Paste GeoJSON" : {
 
     },
+    "Acknowledgements" : {
+      "comment" : "Help menu item that shows the bundled third-party notices"
+    },
     "Privacy Policy" : {
       "comment" : "Help menu item that opens the privacy policy in the browser"
     },

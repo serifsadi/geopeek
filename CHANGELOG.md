@@ -2,9 +2,8 @@
 
 ## Unreleased
 
-- The Help menu opens the privacy policy and the support page in the browser. About GeoPeek is unchanged.
+- The Help menu opens Acknowledgements, the privacy policy, and the support page. Acknowledgements shows the bundled third-party notices. About GeoPeek shows a short credit line and the same link. The full license text ships in the app as ThirdPartyNotices.txt.
 - Map attribution is visible when the map loads, in the app and in Quick Look. It collapses to the info button after the first interaction outside that control, or after 5 seconds. The info button still opens it.
-- About GeoPeek shows the third-party notices, including the full MapLibre GL JS 5.24.1 license.
 - The app records its App Store category, copyright, and encryption flag. `scripts/release-mas.sh` builds the Mac App Store package. The Developer ID disk image is unchanged.
 
 ## 0.4.1 - 2026-11-23
