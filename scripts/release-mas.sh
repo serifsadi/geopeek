@@ -150,8 +150,8 @@ assert_store_metadata() {
     || die "Credits.html credits are not center aligned"
   [[ -f "$app/Contents/Resources/ThirdPartyNotices.txt" ]] \
     || die "GeoPeek.app is missing Contents/Resources/ThirdPartyNotices.txt"
-  grep -q "BEGIN MAPLIBRE-GL-JS-5.24.1 LICENSE" "$app/Contents/Resources/ThirdPartyNotices.txt" \
-    || die "ThirdPartyNotices.txt in the app is missing the MapLibre license"
+  grep -q "Copyright (c) 2023, MapLibre contributors" "$app/Contents/Resources/ThirdPartyNotices.txt" \
+    || die "ThirdPartyNotices.txt in the app is missing the MapLibre copyright line"
   privacy="$app/Contents/Resources/PrivacyInfo.xcprivacy"
   if [[ ! -f "$privacy" ]]; then
     privacy="$app/Contents/PrivacyInfo.xcprivacy"

@@ -1708,25 +1708,51 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
 
         // The compact control is created expanded (maplibregl-compact-show
         // and open). Leave it that way so the credits are visible on load.
-        // Collapse to the (i) button after the first interaction outside the
-        // control, or after 5 seconds. A click on the button cancels that
-        // timer and still opens the credits. With the compact class already
-        // set, later source attributions do not expand it again.
+        // The custom credit is only "MapLibre" until the basemap style or
+        // source attribution arrives. Start the 5 second collapse then, so a
+        // slow style fetch is not hidden before OpenFreeMap, OpenMapTiles,
+        // and OpenStreetMap are shown. The first interaction outside the
+        // control still collapses immediately. A click on the control cancels
+        // the timer and keeps the credits open. With the compact class
+        // already set, later source attributions do not expand it again.
         var attributionCollapsed = false;
-        var attributionTimer = setTimeout(collapseAttribution, 5000);
+        var attributionHoldOpen = false;
+        var attributionTimer = null;
         function collapseAttribution() {
           if (attributionCollapsed) return;
           attributionCollapsed = true;
-          clearTimeout(attributionTimer);
+          if (attributionTimer) clearTimeout(attributionTimer);
+          attributionTimer = null;
           var attrib = document.querySelector('.maplibregl-ctrl-attrib');
           if (!attrib) return;
           attrib.classList.remove('maplibregl-compact-show');
           attrib.removeAttribute('open');
         }
+        function scheduleAttributionCollapse() {
+          if (attributionCollapsed || attributionHoldOpen || attributionTimer) return;
+          attributionTimer = setTimeout(collapseAttribution, 5000);
+        }
+        function basemapAttributionShown(event) {
+          var source = event && event.source;
+          if (source && source.attribution) return true;
+          var style = map.getStyle ? map.getStyle() : null;
+          var sources = style && style.sources;
+          if (!sources) return false;
+          for (var id in sources) {
+            if (sources[id] && sources[id].attribution) return true;
+          }
+          return false;
+        }
+        function noteShownAttribution(event) {
+          if (!basemapAttributionShown(event)) return;
+          scheduleAttributionCollapse();
+        }
         function interactionCollapsesAttribution(event) {
           var node = event.target;
           if (node && node.closest && node.closest('.maplibregl-ctrl-attrib')) {
-            clearTimeout(attributionTimer);
+            attributionHoldOpen = true;
+            if (attributionTimer) clearTimeout(attributionTimer);
+            attributionTimer = null;
             return;
           }
           collapseAttribution();
@@ -1734,6 +1760,8 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
         document.addEventListener('pointerdown', interactionCollapsesAttribution);
         document.addEventListener('wheel', interactionCollapsesAttribution, { passive: true });
         document.addEventListener('keydown', interactionCollapsesAttribution);
+        map.on('style.load', noteShownAttribution);
+        map.on('sourcedata', noteShownAttribution);
 
         map.on('error', function(e) {
           var info = basemapErrorInfo(e);

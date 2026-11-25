@@ -233,10 +233,17 @@ check(countCaseInsensitive("</script", in: html) == 2,
       "expected exactly two </script sequences, found \(countCaseInsensitive("</script", in: html))")
 
 // Attribution starts expanded. It collapses on the first interaction outside
-// the control, or after 5 seconds, and the (i) button can open it again.
+// the control, or 5 seconds after the basemap credits are shown. The timer
+// does not start at map creation, and the (i) button can open it again.
 check(html.contains("compact: true"), "map attribution is not compact")
 check(html.contains("setTimeout(collapseAttribution, 5000)"),
-      "map attribution does not collapse about 5 seconds after load")
+      "map attribution does not collapse about 5 seconds after the basemap credits are shown")
+check(html.contains("source.attribution"),
+      "the 5 second timer does not wait for source attribution")
+check(html.contains("map.on('sourcedata', noteShownAttribution)"),
+      "the 5 second timer does not watch sourcedata")
+check(!html.contains("var attributionTimer = setTimeout"),
+      "the 5 second timer still starts at map creation")
 check(html.contains("clearTimeout(attributionTimer)"),
       "a click on the attribution control does not cancel the collapse timer")
 check(html.contains("closest('.maplibregl-ctrl-attrib')"),
