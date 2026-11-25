@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- The Help menu opens Acknowledgements, the privacy policy, and the support page. Acknowledgements shows the bundled third-party notices as plain text. About GeoPeek shows one short centered credit. Help > Acknowledgements opens the notices. The full license text ships in the app as ThirdPartyNotices.txt.
+- The app records its App Store category, copyright, and encryption flag. `scripts/release-mas.sh` builds the Mac App Store package. The Developer ID disk image is unchanged.
+
 ## 0.4.1 - 2026-11-23
 
 - The GeoPeek menu, just below About GeoPeek, and the welcome screen offer a Set as Default… command. macOS asks for each of GeoJSON, KML, KMZ, and GPX that GeoPeek does not already open, and GeoPeek becomes the default only if those prompts are approved. The action is unavailable when GeoPeek is already the default for all four. The handler rank stays Alternate.

@@ -57,6 +57,7 @@
 		B61370962F5370DB00DCA15B /* Exceptions for "GeoPeekExtension" folder in "GeoPeekExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				GeoPeekExtension-MAS.entitlements,
 				GeoPeekExtension.entitlements,
 				Info.plist,
 			);
@@ -65,6 +66,7 @@
 		CC000007CC5399AA00DCA15B /* Exceptions for "GeoPeekThumbnailExtension" folder in "GeoPeekThumbnailExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				GeoPeekThumbnailExtension-MAS.entitlements,
 				GeoPeekThumbnailExtension.entitlements,
 				Info.plist,
 			);
@@ -495,7 +497,9 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = GeoPeek/Info.plist;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Şerif Şadi Şenkule";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -531,7 +535,9 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = GeoPeek/Info.plist;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Şerif Şadi Şenkule";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -574,7 +580,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = GeoPeekExtension/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = GeoPeekExtension;
+				INFOPLIST_KEY_CFBundleDisplayName = "GeoPeek Preview";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -601,9 +607,9 @@
 		B61370992F5370DB00DCA15B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
-				CODE_SIGN_ENTITLEMENTS = GeoPeekExtension/GeoPeekExtension.entitlements;
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_ENTITLEMENTS = "GeoPeekExtension/GeoPeekExtension$(MAS_ENTITLEMENTS_SUFFIX).entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				MAS_ENTITLEMENTS_SUFFIX = "";
 				CURRENT_PROJECT_VERSION = 4;
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = 7W797GT86L;
 				ENABLE_APP_SANDBOX = YES;
@@ -621,7 +627,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = GeoPeekExtension/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = GeoPeekExtension;
+				INFOPLIST_KEY_CFBundleDisplayName = "GeoPeek Preview";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -659,7 +665,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = GeoPeekThumbnailExtension/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = GeoPeekThumbnailExtension;
+				INFOPLIST_KEY_CFBundleDisplayName = "GeoPeek Thumbnail";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -685,11 +691,11 @@
 		CC00000ECC5399AA00DCA15B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_ENTITLEMENTS = "GeoPeekThumbnailExtension/GeoPeekThumbnailExtension$(MAS_ENTITLEMENTS_SUFFIX).entitlements";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 4;
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = 7W797GT86L;
-				CODE_SIGN_ENTITLEMENTS = GeoPeekThumbnailExtension/GeoPeekThumbnailExtension.entitlements;
+				MAS_ENTITLEMENTS_SUFFIX = "";
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
@@ -697,7 +703,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = GeoPeekThumbnailExtension/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = GeoPeekThumbnailExtension;
+				INFOPLIST_KEY_CFBundleDisplayName = "GeoPeek Thumbnail";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

@@ -139,13 +139,13 @@ Files are read locally and are not uploaded.
 
 The app and the Quick Look extension are sandboxed, with read-only access to user-selected files and the network client entitlement. They request an OpenFreeMap style from `tiles.openfreemap.org`: `https://tiles.openfreemap.org/styles/dark` when the appearance is dark, and `https://tiles.openfreemap.org/styles/positron` otherwise. MapLibre then requests the tiles, glyphs, and sprites named in that style. Those style documents, and the planet TileJSON they reference, currently name only `tiles.openfreemap.org`. File contents are not included in the requests. The thumbnail extension is sandboxed with read-only access to user-selected files. Its entitlements omit the network client, and a `.geojson`, `.kml`, `.kmz`, or `.gpx` thumbnail does not open the file.
 
-`GeoPeek/PrivacyInfo.xcprivacy`, `GeoPeekExtension/PrivacyInfo.xcprivacy`, and `GeoPeekThumbnailExtension/PrivacyInfo.xcprivacy` set `NSPrivacyTracking` to false. The tracking-domain, collected-data, and accessed-API arrays are empty. There is no analytics.
+`GeoPeek/PrivacyInfo.xcprivacy`, `GeoPeekExtension/PrivacyInfo.xcprivacy`, and `GeoPeekThumbnailExtension/PrivacyInfo.xcprivacy` set `NSPrivacyTracking` to false. The tracking-domain and collected-data arrays are empty. The app declares `NSPrivacyAccessedAPICategoryUserDefaults` with reason `CA92.1` because it stores recent-file dates in its own defaults. The extension accessed-API arrays stay empty. There is no analytics.
 
-Attribution links and the MapLibre logo open in the browser.
+Attribution links and the MapLibre logo open in the browser. The Help menu opens Acknowledgements, the privacy policy (https://geopeek.app/privacy/), and support (https://geopeek.app/support/).
 
 ## Releasing
 
-Maintainers: see [RELEASING.md](RELEASING.md).
+Maintainers: see [RELEASING.md](RELEASING.md) for the Developer ID disk image and the Mac App Store package.
 
 ## Acknowledgements
 
@@ -153,6 +153,8 @@ Maintainers: see [RELEASING.md](RELEASING.md).
 - Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), [ODbL](https://opendatacommons.org/licenses/odbl/)
 - [OpenMapTiles](https://openmaptiles.org/) schema
 - [OpenFreeMap](https://openfreemap.org/)
+
+The notices shipped inside the app are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). About GeoPeek shows one short centered credit. Help > Acknowledgements opens the bundled plain-text notices.
 
 ## License
 

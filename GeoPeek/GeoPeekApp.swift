@@ -76,6 +76,79 @@ struct ViewerCommands: Commands {
             .keyboardShortcut("v", modifiers: .command)
             .disabled(focusedFile == nil || windowLoad == nil)
         }
+        // The system About panel stays in the app menu. These items replace
+        // the default Help item, which looks for a help book this app does not have.
+        CommandGroup(replacing: .help) {
+            Button("Acknowledgements") {
+                showAcknowledgements()
+            }
+            Button("Support") {
+                openWebLink("https://geopeek.app/support/")
+            }
+            Button("Privacy Policy") {
+                openWebLink("https://geopeek.app/privacy/")
+            }
+        }
+    }
+}
+
+@MainActor
+private func openWebLink(_ string: String) {
+    guard let url = URL(string: string) else { return }
+    NSWorkspace.shared.open(url)
+}
+
+/// The bundled license text, in a window this process owns. Reading the app
+/// bundle does not need a user-selected file or another app.
+@MainActor
+func showAcknowledgements() {
+    AcknowledgementsWindow.show()
+}
+
+@MainActor
+private enum AcknowledgementsWindow {
+    private static var window: NSWindow?
+
+    static func show() {
+        if window == nil {
+            let host = NSHostingController(rootView: AcknowledgementsView(text: loadText()))
+            let created = NSWindow(contentViewController: host)
+            created.title = "Acknowledgements"
+            created.styleMask = [.titled, .closable, .resizable, .miniaturizable]
+            created.setContentSize(NSSize(width: 560, height: 480))
+            created.contentMinSize = NSSize(width: 420, height: 280)
+            created.isReleasedWhenClosed = false
+            created.isRestorable = false
+            created.tabbingMode = .disallowed
+            created.center()
+            window = created
+        }
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+    }
+
+    private static func loadText() -> String {
+        guard let url = Bundle.main.url(forResource: "ThirdPartyNotices", withExtension: "txt"),
+              let text = try? String(contentsOf: url, encoding: .utf8),
+              !text.isEmpty else {
+            return "The acknowledgements file is not in this copy of GeoPeek."
+        }
+        return text
+    }
+}
+
+private struct AcknowledgementsView: View {
+    let text: String
+
+    var body: some View {
+        ScrollView {
+            Text(text)
+                .font(.system(size: 12))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
