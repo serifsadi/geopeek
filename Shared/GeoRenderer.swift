@@ -1607,10 +1607,6 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
             message: String(message || 'basemap failed'),
             url: String(url || '')
           });
-          // A failed basemap never writes the OpenStreetMap credit, so the
-          // 5 second timer would not start. Collapse now instead of leaving
-          // the control open.
-          collapseAttribution();
         }
 
         function noteBasemapSuccess(generation, url) {
@@ -1689,9 +1685,9 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
         var mapOptions = {
           container: 'map',
           style: plainStyle(bgColor),
-          // An options object replaces the library default. compact keeps
-          // the (i) button. The MapLibre credit has to be repeated or the
-          // control is empty until a basemap source arrives. Empty
+          // An options object replaces the library default. compact is
+          // already the default, and the MapLibre credit has to be repeated
+          // or the control is empty until a basemap source arrives. Empty
           // attributions skip the compact class, and the next update would
           // expand the control again.
           attributionControl: {
@@ -1709,70 +1705,6 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
         }
 
         var map = new maplibregl.Map(mapOptions);
-
-        // The compact control is created expanded (maplibregl-compact-show
-        // and open). Leave it that way so the credits are visible on load.
-        // The custom credit is only "MapLibre" until OpenFreeMap's TileJSON
-        // credit is written into the control. That text is not a style
-        // source attribution field. Start the 5 second collapse when the
-        // rendered credit contains OpenStreetMap, so a slow style fetch is
-        // not hidden before OpenFreeMap, OpenMapTiles, and OpenStreetMap are
-        // shown. If that text never arrives, collapse 12 seconds after map
-        // load, or immediately when the basemap fails. The first interaction
-        // outside the control still collapses immediately. A click on the
-        // control cancels the timer and keeps the credits open. With the
-        // compact class already set, later credits do not expand it again.
-        var attributionCollapsed = false;
-        var attributionHoldOpen = false;
-        var attributionTimer = null;
-        var attributionShortScheduled = false;
-        function collapseAttribution() {
-          if (attributionCollapsed || attributionHoldOpen) return;
-          attributionCollapsed = true;
-          if (attributionTimer) clearTimeout(attributionTimer);
-          attributionTimer = null;
-          var attrib = document.querySelector('.maplibregl-ctrl-attrib');
-          if (!attrib) return;
-          attrib.classList.remove('maplibregl-compact-show');
-          attrib.removeAttribute('open');
-        }
-        function scheduleAttributionCollapse() {
-          if (attributionCollapsed || attributionHoldOpen || attributionShortScheduled) return;
-          attributionShortScheduled = true;
-          if (attributionTimer) clearTimeout(attributionTimer);
-          attributionTimer = setTimeout(collapseAttribution, 5000);
-        }
-        function scheduleAttributionCap() {
-          if (attributionCollapsed || attributionHoldOpen || attributionShortScheduled || attributionTimer) return;
-          attributionTimer = setTimeout(collapseAttribution, 12000);
-        }
-        function attributionShowsOpenStreetMap() {
-          var inner = document.querySelector('.maplibregl-ctrl-attrib-inner');
-          return !!(inner && (inner.textContent || '').indexOf('OpenStreetMap') !== -1);
-        }
-        function noteShownAttribution() {
-          if (!attributionShowsOpenStreetMap()) return;
-          scheduleAttributionCollapse();
-        }
-        function interactionCollapsesAttribution(event) {
-          var node = event.target;
-          if (node && node.closest && node.closest('.maplibregl-ctrl-attrib')) {
-            attributionHoldOpen = true;
-            if (attributionTimer) clearTimeout(attributionTimer);
-            attributionTimer = null;
-            return;
-          }
-          collapseAttribution();
-        }
-        document.addEventListener('pointerdown', interactionCollapsesAttribution);
-        document.addEventListener('wheel', interactionCollapsesAttribution, { passive: true });
-        document.addEventListener('keydown', interactionCollapsesAttribution);
-        // MapLibre updates the control on these same events, and that
-        // listener was registered first, so the TileJSON credit is already
-        // in the element when this runs.
-        map.on('styledata', noteShownAttribution);
-        map.on('sourcedata', noteShownAttribution);
-        map.once('load', scheduleAttributionCap);
 
         map.on('error', function(e) {
           var info = basemapErrorInfo(e);
