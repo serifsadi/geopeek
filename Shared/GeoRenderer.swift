@@ -1327,6 +1327,10 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
           font-size: 10.5px; color: var(--label);
           padding: 5px 12px 5px 0; vertical-align: top; word-break: break-all;
         }
+        /* Close button is 18px with 7px of padding on each side, pinned to the top right. */
+        .prop-table tr:first-child .prop-val {
+          padding-right: 32px;
+        }
         .no-props { padding: 10px 12px; font: 11px -apple-system, sans-serif; color: var(--label3); }
 
         .maplibregl-ctrl-group {
