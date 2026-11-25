@@ -1709,13 +1709,15 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
         // The compact control is created expanded (maplibregl-compact-show
         // and open). Leave it that way so the credits are visible on load.
         // Collapse to the (i) button after the first interaction outside the
-        // control, or after 5 seconds. A click on the button still opens the
-        // credits. With the compact class already set, later source
-        // attributions do not expand it again.
+        // control, or after 5 seconds. A click on the button cancels that
+        // timer and still opens the credits. With the compact class already
+        // set, later source attributions do not expand it again.
         var attributionCollapsed = false;
+        var attributionTimer = setTimeout(collapseAttribution, 5000);
         function collapseAttribution() {
           if (attributionCollapsed) return;
           attributionCollapsed = true;
+          clearTimeout(attributionTimer);
           var attrib = document.querySelector('.maplibregl-ctrl-attrib');
           if (!attrib) return;
           attrib.classList.remove('maplibregl-compact-show');
@@ -1723,13 +1725,15 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
         }
         function interactionCollapsesAttribution(event) {
           var node = event.target;
-          if (node && node.closest && node.closest('.maplibregl-ctrl-attrib')) return;
+          if (node && node.closest && node.closest('.maplibregl-ctrl-attrib')) {
+            clearTimeout(attributionTimer);
+            return;
+          }
           collapseAttribution();
         }
         document.addEventListener('pointerdown', interactionCollapsesAttribution);
         document.addEventListener('wheel', interactionCollapsesAttribution, { passive: true });
         document.addEventListener('keydown', interactionCollapsesAttribution);
-        setTimeout(collapseAttribution, 5000);
 
         map.on('error', function(e) {
           var info = basemapErrorInfo(e);

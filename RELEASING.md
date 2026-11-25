@@ -69,7 +69,7 @@ The Developer ID disk image and the Homebrew cask stay on `scripts/release.sh`. 
 
 App Store Connect needs a different pair of certificates. The app is signed with Apple Distribution (older name: 3rd Party Mac Developer Application). The installer package is signed with Mac Installer Distribution (older name: 3rd Party Mac Developer Installer). The profiles are Mac App Store profiles, not Developer ID profiles. One archive command cannot pass both the Developer ID identity and the Apple Distribution identity. Pointing the App Store exporter at the Developer ID archive would also tie the two release paths together. Changing `release.sh` so both exports shared one archive would change the disk image path.
 
-`release-mas.sh` therefore archives again, from the same scheme and Release configuration, with automatic signing. The command line sets `CODE_SIGN_IDENTITY="Apple Distribution"` only to override the ad-hoc pin, the same way `release.sh` overrides it with Developer ID. Export then uses `scripts/ExportOptions-MAS.plist` (`method` `app-store-connect`, `signingStyle` `automatic`). That export is what signs the package, and it is where Xcode can create the Mac Installer Distribution certificate. The certificate does not have to exist before the first export. The plist does not name a signing certificate.
+`release-mas.sh` therefore archives again, from the same scheme and Release configuration. The archive uses manual signing and `CODE_SIGN_IDENTITY="Apple Distribution"`, the same kind of override `release.sh` uses for Developer ID. Pairing that identity with automatic style makes Xcode reject the archive. Export then uses `scripts/ExportOptions-MAS.plist` (`method` `app-store-connect`, `signingStyle` `automatic`). That export signs the package, and it is where Xcode can create the Mac Installer Distribution certificate. The certificate does not have to exist before the first export. The plist does not name a signing certificate. It sets `manageAppVersionAndBuildNumber` to false so export keeps the project version.
 
 ### Before the first upload
 
@@ -91,7 +91,7 @@ App Store Connect needs a different pair of certificates. The app is signed with
 
 The notary keychain profile and `create-dmg` are only used by `release.sh`. Do not notarize the App Store package. Review does that.
 
-`DEVELOPMENT_TEAM` is required, as with `release.sh`. The script writes it into a temporary copy of `scripts/ExportOptions-MAS.plist`. The committed plist already records team `7W797GT86L` so it can be selected from Xcode. Do not set `manageAppVersionAndBuildNumber`. The version stays whatever the project says.
+`DEVELOPMENT_TEAM` is required, as with `release.sh`. The script writes it into a temporary copy of `scripts/ExportOptions-MAS.plist`. The committed plist already records team `7W797GT86L` so it can be selected from Xcode. `manageAppVersionAndBuildNumber` is false. The version stays whatever the project says.
 
 ### Each App Store build
 

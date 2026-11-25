@@ -61,9 +61,13 @@ require_api_key() {
 # Archive and export pass the API key through when it is set. Bash 3.2 on
 # macOS treats an empty array as unbound under set -u, so the two forms are
 # written out instead of sharing an argument list.
+# Manual signing plus an explicit identity, matching release.sh. Automatic
+# style rejects a command-line CODE_SIGN_IDENTITY, and the extension targets
+# pin an ad-hoc identity that this override has to replace. The package is
+# still signed at export, where ExportOptions-MAS.plist uses automatic signing.
 archive_app() {
   local archive="$1"
-  echo "Archiving (clean Release, automatic signing)..."
+  echo "Archiving (clean Release, Apple Distribution)..."
   if [[ -n "${ASC_KEY_PATH:-}" ]]; then
     xcodebuild clean archive \
       -project "$PROJECT" \
@@ -77,7 +81,7 @@ archive_app() {
       -authenticationKeyID "$ASC_KEY_ID" \
       -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
       DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
-      CODE_SIGN_STYLE=Automatic \
+      CODE_SIGN_STYLE=Manual \
       CODE_SIGN_IDENTITY="Apple Distribution" \
       ENABLE_HARDENED_RUNTIME=YES
   else
@@ -90,7 +94,7 @@ archive_app() {
       -derivedDataPath "$WORK/DerivedData" \
       -allowProvisioningUpdates \
       DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
-      CODE_SIGN_STYLE=Automatic \
+      CODE_SIGN_STYLE=Manual \
       CODE_SIGN_IDENTITY="Apple Distribution" \
       ENABLE_HARDENED_RUNTIME=YES
   fi
@@ -222,6 +226,9 @@ main() {
   style=$("$PLISTBUDDY" -c "Print :signingStyle" "$export_template")
   [[ "$method" == "app-store-connect" ]] || die "ExportOptions-MAS.plist method is '$method', expected app-store-connect"
   [[ "$style" == "automatic" ]] || die "ExportOptions-MAS.plist signingStyle is '$style', expected automatic"
+  local manage_versions
+  manage_versions=$("$PLISTBUDDY" -c "Print :manageAppVersionAndBuildNumber" "$export_template" 2>/dev/null || true)
+  [[ "$manage_versions" == "false" ]] || die "ExportOptions-MAS.plist must set manageAppVersionAndBuildNumber to false"
 
   require_cmd xcodebuild
   require_cmd xcrun
@@ -247,14 +254,14 @@ main() {
   mkdir -p "$export_dir"
   export_archive "$archive" "$export_plist" "$export_dir"
 
-  local pkg
+  local pkg pkg_count
+  # Count first. Two packages make -f fail on the combined find output, which
+  # would hide this message.
+  pkg_count=$(find "$export_dir" -maxdepth 1 -name '*.pkg' -print | grep -c . || true)
+  [[ "$pkg_count" -eq 1 ]] || die "export produced $pkg_count packages, expected 1"
   pkg=$(find "$export_dir" -maxdepth 1 -name '*.pkg' -print || true)
   [[ -n "$pkg" && -f "$pkg" ]] || die "export did not produce a .pkg in $export_dir"
   PKG_TMP=$pkg
-  # One package. A second file would make the move below ambiguous.
-  local pkg_count
-  pkg_count=$(find "$export_dir" -maxdepth 1 -name '*.pkg' -print | grep -c . || true)
-  [[ "$pkg_count" -eq 1 ]] || die "export produced $pkg_count packages, expected 1"
 
   assert_pkg_signature "$pkg"
   local app

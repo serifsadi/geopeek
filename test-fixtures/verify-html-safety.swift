@@ -226,6 +226,8 @@ check(countCaseInsensitive("</script", in: html) == 2,
 check(html.contains("compact: true"), "map attribution is not compact")
 check(html.contains("setTimeout(collapseAttribution, 5000)"),
       "map attribution does not collapse about 5 seconds after load")
+check(html.contains("clearTimeout(attributionTimer)"),
+      "a click on the attribution control does not cancel the collapse timer")
 check(html.contains("closest('.maplibregl-ctrl-attrib')"),
       "collapsing attribution does not ignore clicks on the info button")
 check(!html.contains("Drop both so it starts as the (i) button"),
