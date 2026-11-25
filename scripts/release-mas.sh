@@ -144,8 +144,9 @@ assert_store_metadata() {
   [[ -n "$copyright" ]] || die "NSHumanReadableCopyright is empty"
   [[ -f "$app/Contents/Resources/Credits.html" ]] \
     || die "GeoPeek.app is missing Contents/Resources/Credits.html"
-  grep -q "See Help &gt; Acknowledgements." "$app/Contents/Resources/Credits.html" \
-    || die "Credits.html is missing the Help menu line"
+  if grep -q "See Help" "$app/Contents/Resources/Credits.html"; then
+    die "Credits.html still mentions the Help menu"
+  fi
   grep -q "text-align: center" "$app/Contents/Resources/Credits.html" \
     || die "Credits.html credits are not center aligned"
   [[ -f "$app/Contents/Resources/ThirdPartyNotices.txt" ]] \

@@ -77,14 +77,14 @@ func roundTripJSONString(_ value: String) throws -> String {
 }
 
 /// The MapLibre license in the repo notices and the plain text the app shows must match.
-/// About credits are two centered lines and do not register a URL scheme.
+/// About credits are one centered line and do not register a URL scheme.
 func checkShippedNotices() throws {
     let notices = try String(contentsOfFile: "THIRD_PARTY_NOTICES.md", encoding: .utf8)
     let bundled = try String(contentsOfFile: "GeoPeek/ThirdPartyNotices.txt", encoding: .utf8)
     let credits = try String(contentsOfFile: "GeoPeek/Credits.html", encoding: .utf8)
     check(credits.contains("Map data © OpenStreetMap contributors. Uses MapLibre GL JS, OpenMapTiles and OpenFreeMap."),
           "About credits are missing the short attribution line")
-    check(credits.contains("See Help &gt; Acknowledgements."), "About credits are missing the Help menu line")
+    check(!credits.contains("See Help"), "About credits still mention the Help menu")
     check(credits.contains("align=\"center\""), "About credits are not center aligned")
     check(credits.contains("text-align: center"), "About credits are missing centered text style")
     check(credits.contains("-apple-system"), "About credits are missing the system font")
