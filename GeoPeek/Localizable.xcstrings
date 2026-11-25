@@ -66,6 +66,12 @@
     "Paste GeoJSON" : {
 
     },
+    "Privacy Policy" : {
+      "comment" : "Help menu item that opens the privacy policy in the browser"
+    },
+    "Support" : {
+      "comment" : "Help menu item that opens the support page in the browser"
+    },
     "Recent" : {
 
     },

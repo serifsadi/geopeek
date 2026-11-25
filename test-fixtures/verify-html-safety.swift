@@ -76,6 +76,51 @@ func roundTripJSONString(_ value: String) throws -> String {
     return literal
 }
 
+/// The MapLibre license is copied into the repo notices and the About panel.
+/// Both copies have to be the same text, including the Mapbox section.
+func checkShippedNotices() throws {
+    let notices = try String(contentsOfFile: "THIRD_PARTY_NOTICES.md", encoding: .utf8)
+    let credits = try String(contentsOfFile: "GeoPeek/Credits.html", encoding: .utf8)
+    let fromNotices = licenseSlice(notices, "THIRD_PARTY_NOTICES.md")
+    let fromCredits = licenseSlice(credits, "Credits.html")
+    check(fromNotices == fromCredits, "MapLibre license in the notices and the About credits differ")
+    check(fromNotices.contains("Copyright (c) 2023, MapLibre contributors"), "MapLibre copyright notice missing")
+    check(fromNotices.contains("Redistributions in binary form must reproduce the above copyright notice"),
+          "MapLibre binary-redistribution condition missing")
+    check(fromNotices.contains("THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS"),
+          "MapLibre disclaimer missing")
+    check(fromNotices.contains("Contains code from mapbox-gl-js v1.13 and earlier"), "Mapbox pre-1.13 section missing")
+    check(fromNotices.contains("Copyright (c) 2020, Mapbox"), "Mapbox copyright missing")
+    check(fromNotices.contains("Contains code from glfx.js"), "glfx.js section missing")
+    check(fromNotices.contains("Contains a portion of d3-color"), "d3-color section missing")
+    let redistributions = fromNotices.components(separatedBy: "Redistribution and use in source and binary forms").count - 1
+    check(redistributions == 3, "expected 3 BSD redistribution blocks, found \(redistributions)")
+    check(fromNotices.count > 5000, "MapLibre license text is too short to be the full file")
+    for (text, label) in [(notices, "THIRD_PARTY_NOTICES.md"), (credits, "Credits.html")] {
+        check(text.contains("OpenStreetMap contributors"), "\(label) is missing the OpenStreetMap attribution")
+        check(text.contains("https://opendatacommons.org/licenses/odbl/"), "\(label) is missing the ODbL link")
+        check(text.contains("OpenMapTiles"), "\(label) is missing the OpenMapTiles attribution")
+        check(text.contains("https://openfreemap.org/"), "\(label) is missing the OpenFreeMap attribution")
+    }
+}
+
+func licenseSlice(_ text: String, _ label: String) -> String {
+    let startMarker = "BEGIN MAPLIBRE-GL-JS-5.24.1 LICENSE"
+    let endMarker = "END MAPLIBRE-GL-JS-5.24.1 LICENSE"
+    let lines = text.components(separatedBy: "\n")
+    guard let start = lines.firstIndex(where: { $0.contains(startMarker) }),
+          let end = lines.firstIndex(where: { $0.contains(endMarker) }),
+          start < end else {
+        fail("\(label) is missing the MapLibre license markers")
+        return ""
+    }
+    let kept = lines[(start + 1)..<end].filter { line in
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        return trimmed != "```" && trimmed != "```text" && trimmed != "<pre>" && trimmed != "</pre>"
+    }
+    return kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
 @main
 enum VerifyHTMLSafety {
     static func main() {
@@ -175,6 +220,16 @@ func countCaseInsensitive(_ needle: String, in text: String) -> Int {
 // breakout would add more end tags.
 check(countCaseInsensitive("</script", in: html) == 2,
       "expected exactly two </script sequences, found \(countCaseInsensitive("</script", in: html))")
+
+// Attribution starts expanded. It collapses on the first interaction outside
+// the control, or after 5 seconds, and the (i) button can open it again.
+check(html.contains("compact: true"), "map attribution is not compact")
+check(html.contains("setTimeout(collapseAttribution, 5000)"),
+      "map attribution does not collapse about 5 seconds after load")
+check(html.contains("closest('.maplibregl-ctrl-attrib')"),
+      "collapsing attribution does not ignore clicks on the info button")
+check(!html.contains("Drop both so it starts as the (i) button"),
+      "map attribution still starts collapsed")
 
 // Basemap is OpenFreeMap's keyless positron/dark styles. CARTO's raster host
 // and the old opacity-gated layer must not come back.
@@ -725,6 +780,7 @@ check(!prettyHTML.contains("Not valid JSON"), "truncated pretty JSON was called 
 
 try checkThumbnailSniff()
 checkThumbnailLayout()
+try checkShippedNotices()
 
 if failures == 0 {
     print("ok: \(breakouts.count) payloads, fixture, user script, esc(), navigation policy")

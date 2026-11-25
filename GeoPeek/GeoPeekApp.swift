@@ -76,7 +76,23 @@ struct ViewerCommands: Commands {
             .keyboardShortcut("v", modifiers: .command)
             .disabled(focusedFile == nil || windowLoad == nil)
         }
+        // The system About panel stays in the app menu. These two items replace
+        // the default Help item, which looks for a help book this app does not have.
+        CommandGroup(replacing: .help) {
+            Button("Support") {
+                openWebLink("https://geopeek.app/support/")
+            }
+            Button("Privacy Policy") {
+                openWebLink("https://geopeek.app/privacy/")
+            }
+        }
     }
+}
+
+@MainActor
+private func openWebLink(_ string: String) {
+    guard let url = URL(string: string) else { return }
+    NSWorkspace.shared.open(url)
 }
 
 extension FocusedValues {

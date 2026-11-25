@@ -19,6 +19,7 @@ Packages/
 # Build artifacts
 builds/
 *.dmg
+*.pkg
 
 # macOS
 .DS_Store

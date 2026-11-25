@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- The Help menu opens the privacy policy and the support page in the browser. About GeoPeek is unchanged.
+- Map attribution is visible when the map loads, in the app and in Quick Look. It collapses to the info button after the first interaction outside that control, or after 5 seconds. The info button still opens it.
+- About GeoPeek shows the third-party notices, including the full MapLibre GL JS 5.24.1 license.
+- The app records its App Store category, copyright, and encryption flag. `scripts/release-mas.sh` builds the Mac App Store package. The Developer ID disk image is unchanged.
+
 ## 0.4.1 - 2026-11-23
 
 - The GeoPeek menu, just below About GeoPeek, and the welcome screen offer a Set as Default… command. macOS asks for each of GeoJSON, KML, KMZ, and GPX that GeoPeek does not already open, and GeoPeek becomes the default only if those prompts are approved. The action is unavailable when GeoPeek is already the default for all four. The handler rank stays Alternate.
