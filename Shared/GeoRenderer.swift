@@ -1607,6 +1607,10 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
             message: String(message || 'basemap failed'),
             url: String(url || '')
           });
+          // A failed basemap never writes the OpenStreetMap credit, so the
+          // 5 second timer would not start. Collapse now instead of leaving
+          // the control open.
+          collapseAttribution();
         }
 
         function noteBasemapSuccess(generation, url) {
@@ -1708,18 +1712,22 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
 
         // The compact control is created expanded (maplibregl-compact-show
         // and open). Leave it that way so the credits are visible on load.
-        // The custom credit is only "MapLibre" until the basemap style or
-        // source attribution arrives. Start the 5 second collapse then, so a
-        // slow style fetch is not hidden before OpenFreeMap, OpenMapTiles,
-        // and OpenStreetMap are shown. The first interaction outside the
-        // control still collapses immediately. A click on the control cancels
-        // the timer and keeps the credits open. With the compact class
-        // already set, later source attributions do not expand it again.
+        // The custom credit is only "MapLibre" until OpenFreeMap's TileJSON
+        // credit is written into the control. That text is not a style
+        // source attribution field. Start the 5 second collapse when the
+        // rendered credit contains OpenStreetMap, so a slow style fetch is
+        // not hidden before OpenFreeMap, OpenMapTiles, and OpenStreetMap are
+        // shown. If that text never arrives, collapse 12 seconds after map
+        // load, or immediately when the basemap fails. The first interaction
+        // outside the control still collapses immediately. A click on the
+        // control cancels the timer and keeps the credits open. With the
+        // compact class already set, later credits do not expand it again.
         var attributionCollapsed = false;
         var attributionHoldOpen = false;
         var attributionTimer = null;
+        var attributionShortScheduled = false;
         function collapseAttribution() {
-          if (attributionCollapsed) return;
+          if (attributionCollapsed || attributionHoldOpen) return;
           attributionCollapsed = true;
           if (attributionTimer) clearTimeout(attributionTimer);
           attributionTimer = null;
@@ -1729,22 +1737,21 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
           attrib.removeAttribute('open');
         }
         function scheduleAttributionCollapse() {
-          if (attributionCollapsed || attributionHoldOpen || attributionTimer) return;
+          if (attributionCollapsed || attributionHoldOpen || attributionShortScheduled) return;
+          attributionShortScheduled = true;
+          if (attributionTimer) clearTimeout(attributionTimer);
           attributionTimer = setTimeout(collapseAttribution, 5000);
         }
-        function basemapAttributionShown(event) {
-          var source = event && event.source;
-          if (source && source.attribution) return true;
-          var style = map.getStyle ? map.getStyle() : null;
-          var sources = style && style.sources;
-          if (!sources) return false;
-          for (var id in sources) {
-            if (sources[id] && sources[id].attribution) return true;
-          }
-          return false;
+        function scheduleAttributionCap() {
+          if (attributionCollapsed || attributionHoldOpen || attributionShortScheduled || attributionTimer) return;
+          attributionTimer = setTimeout(collapseAttribution, 12000);
         }
-        function noteShownAttribution(event) {
-          if (!basemapAttributionShown(event)) return;
+        function attributionShowsOpenStreetMap() {
+          var inner = document.querySelector('.maplibregl-ctrl-attrib-inner');
+          return !!(inner && (inner.textContent || '').indexOf('OpenStreetMap') !== -1);
+        }
+        function noteShownAttribution() {
+          if (!attributionShowsOpenStreetMap()) return;
           scheduleAttributionCollapse();
         }
         function interactionCollapsesAttribution(event) {
@@ -1760,8 +1767,12 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
         document.addEventListener('pointerdown', interactionCollapsesAttribution);
         document.addEventListener('wheel', interactionCollapsesAttribution, { passive: true });
         document.addEventListener('keydown', interactionCollapsesAttribution);
-        map.on('style.load', noteShownAttribution);
+        // MapLibre updates the control on these same events, and that
+        // listener was registered first, so the TileJSON credit is already
+        // in the element when this runs.
+        map.on('styledata', noteShownAttribution);
         map.on('sourcedata', noteShownAttribution);
+        map.once('load', scheduleAttributionCap);
 
         map.on('error', function(e) {
           var info = basemapErrorInfo(e);

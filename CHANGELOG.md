@@ -3,7 +3,7 @@
 ## Unreleased
 
 - The Help menu opens Acknowledgements, the privacy policy, and the support page. Acknowledgements shows the bundled third-party notices as plain text. About GeoPeek shows one short centered credit. Help > Acknowledgements opens the notices. The full license text ships in the app as ThirdPartyNotices.txt.
-- Map attribution is visible when the map loads, in the app and in Quick Look. It collapses to the info button after the first interaction outside that control, or 5 seconds after the basemap credits are shown. The info button still opens it.
+- Map attribution is visible when the map loads, in the app and in Quick Look. It collapses to the info button after the first interaction outside that control, or 5 seconds after the rendered credit includes OpenStreetMap. If that credit never arrives, it collapses about 12 seconds after the map loads, or when the basemap fails. The info button still opens it.
 - The app records its App Store category, copyright, and encryption flag. `scripts/release-mas.sh` builds the Mac App Store package. The Developer ID disk image is unchanged.
 
 ## 0.4.1 - 2026-11-23

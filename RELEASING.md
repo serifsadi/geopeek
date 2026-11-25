@@ -79,11 +79,19 @@ Export logs "Skipping profile for item" for a macOS appex whose signature has no
 
 2. In Xcode, open Settings, Accounts, and sign in with an Apple ID that can create profiles for that team. Archive and export both pass `-allowProvisioningUpdates`, so Xcode can download the Apple Development profiles used at archive time and the Mac App Store profiles used at export. An App Store Connect API key (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_PATH`) does the same thing without a signed-in Apple ID.
 
-3. A local Apple Distribution certificate is not required. `security find-identity -v -p codesigning` should show Apple Development and Developer ID Application. The cloud-managed Apple Distribution certificate is applied when the archive is exported.
+3. The team needs one registered Mac before the first App Store archive. Automatic signing of the extensions asks for a Mac App Development profile, and Xcode will not create one until a device is registered. `release-mas.sh` archives with `-destination "generic/platform=macOS"`. Adding `-allowProvisioningDeviceRegistration` to that archive does not register a device, because a generic destination has no device to register. Register this Mac once, with a normal build to a concrete destination, then the archive can create the profiles:
 
-4. A Mac Installer Distribution certificate does not have to exist yet. The first export creates it when Xcode signs the package. You may be asked to approve that in the Apple ID account.
+   ```bash
+   xcodebuild build -project GeoPeek.xcodeproj -scheme GeoPeek -configuration Release -destination "platform=macOS,arch=arm64" -derivedDataPath <tmp> -allowProvisioningUpdates -allowProvisioningDeviceRegistration DEVELOPMENT_TEAM=<team> CODE_SIGN_STYLE=Automatic CODE_SIGN_IDENTITY="Apple Development" MAS_ENTITLEMENTS_SUFFIX=-MAS
+   ```
 
-5. Upload is optional. Create an App Store Connect API key (Users and Access, Integrations, App Store Connect API). Keep the `.p8` file outside this repository. The script reads `ASC_KEY_ID`, `ASC_ISSUER_ID`, and `ASC_KEY_PATH`. Nothing in the repository is a credential.
+   Use the team id for `<team>` and an empty directory for `<tmp>`. This build is not the package. After it succeeds, `./scripts/release-mas.sh` can archive.
+
+4. A local Apple Distribution certificate is not required. `security find-identity -v -p codesigning` should show Apple Development and Developer ID Application. The cloud-managed Apple Distribution certificate is applied when the archive is exported.
+
+5. A Mac Installer Distribution certificate does not have to exist yet. The first export creates it when Xcode signs the package. You may be asked to approve that in the Apple ID account.
+
+6. Upload is optional. Create an App Store Connect API key (Users and Access, Integrations, App Store Connect API). Keep the `.p8` file outside this repository. The script reads `ASC_KEY_ID`, `ASC_ISSUER_ID`, and `ASC_KEY_PATH`. Nothing in the repository is a credential.
 
 The notary keychain profile and `create-dmg` are only used by `release.sh`. Do not notarize the App Store package. Review does that.
 

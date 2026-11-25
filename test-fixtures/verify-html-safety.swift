@@ -233,15 +233,27 @@ check(countCaseInsensitive("</script", in: html) == 2,
       "expected exactly two </script sequences, found \(countCaseInsensitive("</script", in: html))")
 
 // Attribution starts expanded. It collapses on the first interaction outside
-// the control, or 5 seconds after the basemap credits are shown. The timer
-// does not start at map creation, and the (i) button can open it again.
+// the control, or 5 seconds after the rendered credit contains OpenStreetMap.
+// A 12 second cap from map load, and a basemap error, collapse it when that
+// text never arrives. The 5 second timer does not start at map creation, and
+// the (i) button can open it again.
 check(html.contains("compact: true"), "map attribution is not compact")
 check(html.contains("setTimeout(collapseAttribution, 5000)"),
-      "map attribution does not collapse about 5 seconds after the basemap credits are shown")
-check(html.contains("source.attribution"),
-      "the 5 second timer does not wait for source attribution")
+      "map attribution does not collapse about 5 seconds after OpenStreetMap is shown")
+check(html.contains("setTimeout(collapseAttribution, 12000)"),
+      "map attribution has no fallback cap after map load")
+check(html.contains("maplibregl-ctrl-attrib-inner"),
+      "the 5 second timer does not read the rendered attribution text")
+check(html.contains("indexOf('OpenStreetMap')"),
+      "the 5 second timer does not wait for the OpenStreetMap credit")
 check(html.contains("map.on('sourcedata', noteShownAttribution)"),
       "the 5 second timer does not watch sourcedata")
+check(html.contains("map.once('load', scheduleAttributionCap)"),
+      "the fallback cap does not start on map load")
+check(html.contains("collapseAttribution();"),
+      "a basemap error does not collapse attribution")
+check(!html.contains("source.attribution"),
+      "the 5 second timer still looks for a source attribution field")
 check(!html.contains("var attributionTimer = setTimeout"),
       "the 5 second timer still starts at map creation")
 check(html.contains("clearTimeout(attributionTimer)"),
