@@ -1,6 +1,6 @@
 # Third-party notices
 
-GeoPeek bundles MapLibre GL JS 5.24.1 (`Shared/maplibre-gl.js` and `Shared/maplibre-gl.css`). The map also shows data and tiles from the projects below. This file is the source copy of those notices. The same text ships in the app as `ThirdPartyNotices.txt`. About GeoPeek shows a short credit and an Acknowledgements link that opens it, and Help > Acknowledgements opens it too. The Developer ID disk image and the Mac App Store package both contain that app, so both include the notices.
+GeoPeek bundles MapLibre GL JS 5.24.1 (`Shared/maplibre-gl.js` and `Shared/maplibre-gl.css`). The map also shows data and tiles from the projects below. This file is the source copy of those notices. The app ships the same license as plain text in `ThirdPartyNotices.txt`. About GeoPeek shows a short credit and says to see Help > Acknowledgements, which opens that text. The Developer ID disk image and the Mac App Store package both contain that app, so both include the notices.
 
 ## MapLibre GL JS 5.24.1
 

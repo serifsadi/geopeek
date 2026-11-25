@@ -57,6 +57,7 @@
 		B61370962F5370DB00DCA15B /* Exceptions for "GeoPeekExtension" folder in "GeoPeekExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				GeoPeekExtension-MAS.entitlements,
 				GeoPeekExtension.entitlements,
 				Info.plist,
 			);
@@ -65,6 +66,7 @@
 		CC000007CC5399AA00DCA15B /* Exceptions for "GeoPeekThumbnailExtension" folder in "GeoPeekThumbnailExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				GeoPeekThumbnailExtension-MAS.entitlements,
 				GeoPeekThumbnailExtension.entitlements,
 				Info.plist,
 			);
@@ -605,8 +607,9 @@
 		B61370992F5370DB00DCA15B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = GeoPeekExtension/GeoPeekExtension.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "GeoPeekExtension/GeoPeekExtension$(MAS_ENTITLEMENTS_SUFFIX).entitlements";
 				CODE_SIGN_STYLE = Automatic;
+				MAS_ENTITLEMENTS_SUFFIX = "";
 				CURRENT_PROJECT_VERSION = 4;
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = 7W797GT86L;
 				ENABLE_APP_SANDBOX = YES;
@@ -688,10 +691,11 @@
 		CC00000ECC5399AA00DCA15B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "GeoPeekThumbnailExtension/GeoPeekThumbnailExtension$(MAS_ENTITLEMENTS_SUFFIX).entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 4;
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = 7W797GT86L;
-				CODE_SIGN_ENTITLEMENTS = GeoPeekThumbnailExtension/GeoPeekThumbnailExtension.entitlements;
+				MAS_ENTITLEMENTS_SUFFIX = "";
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;

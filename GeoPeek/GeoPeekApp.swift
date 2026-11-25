@@ -98,12 +98,6 @@ private func openWebLink(_ string: String) {
     NSWorkspace.shared.open(url)
 }
 
-/// About credits link here (`geopeek://acknowledgements`). The panel opens that
-/// URL with Launch Services, and the delegate shows the same window as Help.
-func isAcknowledgementsLink(_ url: URL) -> Bool {
-    url.scheme?.lowercased() == "geopeek" && url.host?.lowercased() == "acknowledgements"
-}
-
 /// The bundled license text, in a window this process owns. Reading the app
 /// bundle does not need a user-selected file or another app.
 @MainActor
@@ -211,9 +205,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        if urls.contains(where: isAcknowledgementsLink) {
-            showAcknowledgements()
-        }
         let files = urls.filter(isSupportedDocument)
         // A cold launch delivers the file URLs before didFinishLaunching.
         if !finishedLaunching, !files.isEmpty {

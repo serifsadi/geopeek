@@ -76,21 +76,27 @@ func roundTripJSONString(_ value: String) throws -> String {
     return literal
 }
 
-/// The MapLibre license is copied into the repo notices and the file the app bundles.
-/// Both copies have to be the same text, including the Mapbox section.
-/// About credits stay a short line plus a link to that file.
+/// The MapLibre license in the repo notices and the plain text the app shows must match.
+/// About credits are two centered lines and do not register a URL scheme.
 func checkShippedNotices() throws {
     let notices = try String(contentsOfFile: "THIRD_PARTY_NOTICES.md", encoding: .utf8)
     let bundled = try String(contentsOfFile: "GeoPeek/ThirdPartyNotices.txt", encoding: .utf8)
-    check(notices == bundled, "GeoPeek/ThirdPartyNotices.txt differs from THIRD_PARTY_NOTICES.md")
     let credits = try String(contentsOfFile: "GeoPeek/Credits.html", encoding: .utf8)
     check(credits.contains("Map data © OpenStreetMap contributors. Uses MapLibre GL JS, OpenMapTiles and OpenFreeMap."),
           "About credits are missing the short attribution line")
-    check(credits.contains("href=\"geopeek://acknowledgements\""), "About credits are missing the Acknowledgements link")
+    check(credits.contains("See Help &gt; Acknowledgements."), "About credits are missing the Help menu line")
+    check(credits.contains("align=\"center\""), "About credits are not center aligned")
+    check(credits.contains("text-align: center"), "About credits are missing centered text style")
     check(credits.contains("-apple-system"), "About credits are missing the system font")
     check(credits.contains("font-size: 11px"), "About credits are missing the 11px size")
+    check(!credits.contains("geopeek://acknowledgements"), "About credits still use a custom URL scheme")
     check(!credits.contains("BEGIN MAPLIBRE-GL-JS-5.24.1 LICENSE"), "About credits still include the full license")
+    check(!bundled.contains("```"), "bundled notices contain a markdown fence")
+    check(!bundled.contains("<!--"), "bundled notices contain an HTML comment")
+    check(!bundled.contains("Shared/maplibre"), "bundled notices contain a repo path")
+    check(!bundled.contains("# "), "bundled notices contain a markdown heading")
     let fromNotices = licenseSlice(notices, "THIRD_PARTY_NOTICES.md")
+    check(bundled.contains(fromNotices), "bundled notices are missing the full MapLibre license")
     check(fromNotices.contains("Copyright (c) 2023, MapLibre contributors"), "MapLibre copyright notice missing")
     check(fromNotices.contains("Redistributions in binary form must reproduce the above copyright notice"),
           "MapLibre binary-redistribution condition missing")

@@ -154,7 +154,7 @@ Maintainers: see [RELEASING.md](RELEASING.md) for the Developer ID disk image an
 - [OpenMapTiles](https://openmaptiles.org/) schema
 - [OpenFreeMap](https://openfreemap.org/)
 
-The notices shipped inside the app are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). About GeoPeek shows a short credit and a link to that text. Help > Acknowledgements opens the same bundled file.
+The notices shipped inside the app are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). About GeoPeek shows a short centered credit and says to see Help > Acknowledgements, which opens the bundled plain-text notices.
 
 ## License
 

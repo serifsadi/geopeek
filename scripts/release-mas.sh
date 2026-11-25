@@ -67,6 +67,10 @@ require_api_key() {
 # style accepts "Apple Development" on the command line. -allowProvisioningUpdates
 # lets Xcode download profiles. ExportOptions-MAS.plist then re-signs with the
 # cloud-managed Apple Distribution certificate.
+# MAS_ENTITLEMENTS_SUFFIX selects the App Store entitlements, which add
+# application-identifier and team-identifier. macOS export skips a profile
+# for an appex whose signature does not already have those keys. An empty
+# suffix, the Release default, keeps the Developer ID entitlements.
 archive_app() {
   local archive="$1"
   echo "Archiving (clean Release, Apple Development)..."
@@ -85,6 +89,7 @@ archive_app() {
       DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
       CODE_SIGN_STYLE=Automatic \
       CODE_SIGN_IDENTITY="Apple Development" \
+      MAS_ENTITLEMENTS_SUFFIX=-MAS \
       ENABLE_HARDENED_RUNTIME=YES
   else
     xcodebuild clean archive \
@@ -98,6 +103,7 @@ archive_app() {
       DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
       CODE_SIGN_STYLE=Automatic \
       CODE_SIGN_IDENTITY="Apple Development" \
+      MAS_ENTITLEMENTS_SUFFIX=-MAS \
       ENABLE_HARDENED_RUNTIME=YES
   fi
 }
@@ -138,8 +144,10 @@ assert_store_metadata() {
   [[ -n "$copyright" ]] || die "NSHumanReadableCopyright is empty"
   [[ -f "$app/Contents/Resources/Credits.html" ]] \
     || die "GeoPeek.app is missing Contents/Resources/Credits.html"
-  grep -q "geopeek://acknowledgements" "$app/Contents/Resources/Credits.html" \
-    || die "Credits.html is missing the Acknowledgements link"
+  grep -q "See Help &gt; Acknowledgements." "$app/Contents/Resources/Credits.html" \
+    || die "Credits.html is missing the Help menu line"
+  grep -q "text-align: center" "$app/Contents/Resources/Credits.html" \
+    || die "Credits.html credits are not center aligned"
   [[ -f "$app/Contents/Resources/ThirdPartyNotices.txt" ]] \
     || die "GeoPeek.app is missing Contents/Resources/ThirdPartyNotices.txt"
   grep -q "BEGIN MAPLIBRE-GL-JS-5.24.1 LICENSE" "$app/Contents/Resources/ThirdPartyNotices.txt" \
@@ -155,13 +163,13 @@ assert_store_metadata() {
     || die "privacy manifest is missing the UserDefaults reason CA92.1"
 }
 
-# Mac App Store export must embed a profile in every appex. Xcode skips that
-# when the extension was archived ad-hoc, and App Store Connect then rejects
-# the package. The profile's application-identifier is TEAMID.bundle-id.
+# Export embeds a profile only when the signature already has
+# com.apple.application-identifier. Sandbox entitlements alone do not.
+# The profile's application-identifier is TEAMID.bundle-id.
 assert_appex_profile() {
   local appex="$1"
   local bundle_id="$2"
-  local name profile decoded app_id
+  local name profile decoded app_id ents
   name=$(basename "$appex")
   profile="$appex/Contents/embedded.provisionprofile"
   [[ -f "$profile" ]] || die "$name is missing Contents/embedded.provisionprofile"
@@ -174,6 +182,35 @@ assert_appex_profile() {
   rm -f "$decoded"
   [[ "$app_id" == "$DEVELOPMENT_TEAM.$bundle_id" ]] \
     || die "$name profile application-identifier is '$app_id', expected $DEVELOPMENT_TEAM.$bundle_id"
+  ents=$(codesign -d --entitlements :- "$appex" 2>&1) || die "could not read entitlements of $name"
+  entitlement_present "$ents" "com.apple.application-identifier" \
+    || die "$name signature has no application-identifier"
+}
+
+# Developer ID signatures include Timestamp=. App Store signatures have a
+# Signed Time and no secure timestamp. Requiring Timestamp= rejects a valid
+# App Store export. Hardened runtime is still required.
+assert_store_runtime() {
+  local target="$1"
+  local label="$2"
+  local info
+  info=$(codesign -dv --verbose=4 "$target" 2>&1) || die "codesign could not read $label"
+  printf '%s\n' "$info" | grep -q 'flags=.*runtime' || die "$label is signed without the hardened runtime"
+}
+
+assert_store_product() {
+  local bundle="$1"
+  assert_bundle_layout "$bundle"
+  assert_versions "$bundle" "GeoPeek.app"
+  assert_versions "$bundle/Contents/PlugIns/GeoPeekExtension.appex" "GeoPeekExtension.appex"
+  assert_versions "$bundle/Contents/PlugIns/GeoPeekThumbnailExtension.appex" "GeoPeekThumbnailExtension.appex"
+  assert_store_runtime "$bundle" "GeoPeek.app"
+  assert_store_runtime "$bundle/Contents/PlugIns/GeoPeekExtension.appex" "GeoPeekExtension.appex"
+  assert_store_runtime "$bundle/Contents/PlugIns/GeoPeekThumbnailExtension.appex" "GeoPeekThumbnailExtension.appex"
+  assert_entitlements "$bundle" "GeoPeek.app" "yes"
+  assert_entitlements "$bundle/Contents/PlugIns/GeoPeekExtension.appex" "GeoPeekExtension.appex" "yes"
+  assert_entitlements "$bundle/Contents/PlugIns/GeoPeekThumbnailExtension.appex" "GeoPeekThumbnailExtension.appex" "no"
+  codesign --verify --deep --strict --verbose=2 "$bundle"
 }
 
 assert_appex_profiles() {
@@ -302,7 +339,7 @@ main() {
   assert_pkg_signature "$pkg"
   local app
   app=$(expanded_app "$pkg" "$WORK/pkg-expand") || die "could not read GeoPeek.app from $pkg"
-  assert_product "$app"
+  assert_store_product "$app"
   assert_distribution_signature "$app"
   assert_store_metadata "$app"
   assert_appex_profiles "$app"

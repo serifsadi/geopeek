@@ -1,16 +1,14 @@
-# Third-party notices
+Third-party notices
 
-GeoPeek bundles MapLibre GL JS 5.24.1 (`Shared/maplibre-gl.js` and `Shared/maplibre-gl.css`). The map also shows data and tiles from the projects below. This file is the source copy of those notices. The same text ships in the app as `ThirdPartyNotices.txt`. About GeoPeek shows a short credit and an Acknowledgements link that opens it, and Help > Acknowledgements opens it too. The Developer ID disk image and the Mac App Store package both contain that app, so both include the notices.
+GeoPeek includes MapLibre GL JS 5.24.1. The map also shows data and tiles from the projects below.
 
-## MapLibre GL JS 5.24.1
+MapLibre GL JS 5.24.1
 
-BSD-3-Clause. Upstream: <https://github.com/maplibre/maplibre-gl-js/tree/v5.24.1> (`LICENSE.txt`).
+BSD-3-Clause.
+https://github.com/maplibre/maplibre-gl-js/tree/v5.24.1
 
 Binary redistributions must include the copyright notice, the conditions, and the disclaimer. The text below is the full license file from tag v5.24.1. It includes MapLibre, Mapbox GL JS v1.13 and earlier, glfx.js, and d3-color.
 
-<!-- BEGIN MAPLIBRE-GL-JS-5.24.1 LICENSE -->
-
-```text
 Copyright (c) 2023, MapLibre contributors
 
 All rights reserved.
@@ -127,28 +125,25 @@ LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
 ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-```
 
-<!-- END MAPLIBRE-GL-JS-5.24.1 LICENSE -->
-
-## OpenStreetMap
+OpenStreetMap
 
 Map data © OpenStreetMap contributors.
-<https://www.openstreetmap.org/copyright>
+https://www.openstreetmap.org/copyright
 
 The map data is available under the Open Database License (ODbL):
-<https://opendatacommons.org/licenses/odbl/>
+https://opendatacommons.org/licenses/odbl/
 
-## OpenMapTiles
+OpenMapTiles
 
 © OpenMapTiles. The vector tiles use the OpenMapTiles schema.
-<https://www.openmaptiles.org/>
+https://www.openmaptiles.org/
 
 © OpenStreetMap contributors.
 
-## OpenFreeMap
+OpenFreeMap
 
 Styles and tiles are requested from OpenFreeMap when a map is shown.
-<https://openfreemap.org/>
+https://openfreemap.org/
 
 The TileJSON attribution shown on the map is: OpenFreeMap, © OpenMapTiles, Data from OpenStreetMap.
