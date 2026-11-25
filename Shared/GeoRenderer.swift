@@ -1325,11 +1325,9 @@ func makeMapHTML(meta: GeoJSONMeta) -> String {
         .prop-val {
           font-family: ui-monospace, 'SF Mono', 'Menlo', monospace;
           font-size: 10.5px; color: var(--label);
-          padding: 5px 12px 5px 0; vertical-align: top; word-break: break-all;
-        }
-        /* Close button is 18px with 7px of padding on each side, pinned to the top right. */
-        .prop-table tr:first-child .prop-val {
-          padding-right: 32px;
+          /* 32px matches the close button: 18px glyph plus 7px of padding on each side.
+             Every row keeps it, because the table scrolls under that button. */
+          padding: 5px 32px 5px 0; vertical-align: top; word-break: break-all;
         }
         .no-props { padding: 10px 12px; font: 11px -apple-system, sans-serif; color: var(--label3); }
 
