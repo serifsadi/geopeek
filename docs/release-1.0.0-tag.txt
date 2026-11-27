@@ -1,0 +1,7 @@
+GeoPeek 1.0.0
+
+1.0.0 (5) at 9301ff20ee9c929eb6d9dbb3f13269fa58fd25bf.
+
+Help opens Acknowledgements, the privacy policy, and support. About shows one short centered credit, and ThirdPartyNotices.txt ships in the app. Map attribution stays expanded. System Settings lists GeoPeek Preview and GeoPeek Thumbnail. Popup values stay clear of the close button.
+
+GitHub Releases and Homebrew stay free. The Mac App Store app is a one-time purchase: https://apps.apple.com/app/id6839084436
