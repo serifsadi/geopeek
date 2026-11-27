@@ -2,7 +2,9 @@
 
 Prepared for launch day. Nothing in this file creates a tag, a GitHub Release, or a merge.
 
-Tag `v1.0.0` points at `9301ff20ee9c929eb6d9dbb3f13269fa58fd25bf` (`9301ff2`), the commit the notarized Developer ID disk image and the Mac App Store build 1.0.0 (5) were made from. Merging the pull request that adds these notes does not move that commit.
+Tag `v1.0.0` points at `9301ff20ee9c929eb6d9dbb3f13269fa58fd25bf` (`9301ff2`), the commit the notarized Developer ID disk image and the Mac App Store build 1.0.0 (5) were made from. Merging [serifsadi/geopeek#28](https://github.com/serifsadi/geopeek/pull/28) does not move that commit.
+
+Merge #28 on launch day only, after the App Store version is released. The README in this pull request links https://apps.apple.com/app/id6839084436, and that page is not live yet.
 
 `docs/release-1.0.0-tag.txt` is the annotated tag message. `docs/release-1.0.0-notes.md` is the GitHub Release body. Both are copied below. `gh release create` reads the notes file, not this document.
 
@@ -58,7 +60,11 @@ Run the steps in this order. The disk image is the existing file `GeoPeek-1.0.0.
 
 Release the Mac App Store version that is already uploaded. GeoPeek 1.0.0, build 5, status Pending Developer Release. Move that version to Release. Leave the build number as 5.
 
-### 2. Tag v1.0.0 and the GitHub Release
+### 2. Merge this pull request
+
+Merge https://github.com/serifsadi/geopeek/pull/28 on launch day, after step 1. The README links the Mac App Store page, which is not live until that release. The tag in the next step still points at `9301ff20ee9c929eb6d9dbb3f13269fa58fd25bf`.
+
+### 3. Tag v1.0.0 and the GitHub Release
 
 From a clone that contains `9301ff20ee9c929eb6d9dbb3f13269fa58fd25bf`, this notes file, and the disk image in the current directory. Confirm the commit and the file before tagging:
 
@@ -87,30 +93,15 @@ gh release create v1.0.0 GeoPeek-1.0.0.dmg \
 
 The asset name on the release is `GeoPeek-1.0.0.dmg`. The command publishes the release. It is the launch-day command, and it is not part of preparing this document.
 
-### 3. Homebrew cask
+### 4. Homebrew cask
 
-Merge the open pull request in [serifsadi/homebrew-geopeek](https://github.com/serifsadi/homebrew-geopeek) that sets the cask to 1.0.0 after the GitHub asset exists. The download URL in the cask stays `https://github.com/serifsadi/geopeek/releases/download/v#{version}/GeoPeek-#{version}.dmg`. The diff sets:
+After the GitHub Release asset exists, merge https://github.com/serifsadi/homebrew-geopeek/pull/2. That pull request sets `version "1.0.0"` and `sha256 "5eb51ca851e7d0e7f7db1d6b0f6dc2e6eac524ee076dbd37659940bc4650cf93"`. The download URL stays `https://github.com/serifsadi/geopeek/releases/download/v#{version}/GeoPeek-#{version}.dmg`.
 
-- `version "1.0.0"`
-- `sha256 "5eb51ca851e7d0e7f7db1d6b0f6dc2e6eac524ee076dbd37659940bc4650cf93"`
+### 5. Website badge
 
-`main` on 2026-11-27 is still `version "0.4.1"` and `sha256 "1599113e78b97d86ea1f988a304fdfa13345e2678972449e1e531b5fe0b7db30"`. The only pull request in that repository is [serifsadi/homebrew-geopeek#1](https://github.com/serifsadi/homebrew-geopeek/pull/1), already merged, and it only changes `homepage` to `https://geopeek.app`. List open pull requests on launch day and merge the one whose diff matches the version and checksum above:
+Merge the open pull request on https://github.com/serifsadi/geopeek-web that adds the Mac App Store badge for https://apps.apple.com/app/id6839084436. This step follows the App Store release so the badge points at a released app.
 
-```bash
-gh pr list --repo serifsadi/homebrew-geopeek --state open
-```
-
-### 4. Website badge
-
-Merge the open pull request in [serifsadi/geopeek-web](https://github.com/serifsadi/geopeek-web) that adds the Mac App Store badge linking to https://apps.apple.com/app/id6839084436. This step follows the App Store release so the badge points at a released app.
-
-On 2026-11-27 that pull request is not open. Merged pull requests are [#1](https://github.com/serifsadi/geopeek-web/pull/1), [#2](https://github.com/serifsadi/geopeek-web/pull/2), and [#3](https://github.com/serifsadi/geopeek-web/pull/3). Pull request #3 says the home page still describes only the free GitHub and Homebrew download. List open pull requests on launch day and merge the badge one:
-
-```bash
-gh pr list --repo serifsadi/geopeek-web --state open
-```
-
-### 5. Verify
+### 6. Verify
 
 ```bash
 brew update && brew upgrade --cask geopeek
