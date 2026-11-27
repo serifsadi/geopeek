@@ -1,10 +1,11 @@
 # Changelog
 
-## 1.0.0 - 2026-11-25
+## 1.0.0 - YYYY-MM-DD
 
 - The Help menu opens Acknowledgements, the privacy policy, and the support page. Acknowledgements shows the bundled third-party notices as plain text. About GeoPeek shows one short centered credit. The full license text ships in the app as ThirdPartyNotices.txt.
 - Map attribution stays expanded. The compact control is left as MapLibre creates it.
 - System Settings lists the extensions as GeoPeek Preview and GeoPeek Thumbnail.
+- Long feature names in the map popup stay clear of the close button. Each property value wraps beside it. The app and Quick Look use the same page.
 - The app records its App Store category, copyright, and encryption flag. `scripts/release-mas.sh` builds the Mac App Store package from this same version. The Developer ID disk image is unchanged.
 
 ## 0.4.1 - 2026-11-23

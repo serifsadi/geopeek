@@ -87,6 +87,10 @@ brew install --cask serifsadi/geopeek/geopeek
 
 Download the latest `.dmg` from [Releases](https://github.com/serifsadi/geopeek/releases).
 
+### Mac App Store
+
+[Mac App Store](https://apps.apple.com/app/id6839084436). One-time purchase. GitHub Releases and Homebrew stay free.
+
 ### Build from Source
 
 1. Clone the repository:
